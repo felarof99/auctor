@@ -1,0 +1,81 @@
+# Logs
+logs
+*.log
+*.log.old
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Ignore all .env files except .env.example
+**/.env.*
+!**/.env.example
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage
+*.lcov
+.nyc_output
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+node_modules/
+
+# Claude
+.claude
+
+# TypeScript cache
+*.tsbuildinfo
+
+# TypeScript compiled output in tests
+**/tests/**/*.js
+**/tests/**/*.d.ts
+**/tests/**/*.d.ts.map
+
+# Optional caches
+.npm
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Build output
+dist
+packages/*/dist
+/build/
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# Stores VSCode specific settings
+.vscode
+!.vscode/*.template.json
+!.vscode/extensions.json
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+.DS_Store
+
+# Testing temp files
+tmp/
