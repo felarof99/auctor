@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { unlinkSync } from 'node:fs'
 import type { Classification } from '@auctor/shared/classification'
-import { unlinkSync } from 'fs'
 import { ClassificationCache } from './cache'
 
 const DB_PATH = '/tmp/auctor-cache-test.sqlite'

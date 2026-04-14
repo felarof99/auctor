@@ -30,14 +30,17 @@ export async function classifyWorkUnit(
       },
     },
   })) {
-    if (message.type === 'result' && message.structured_output) {
-      const parsed = ClassificationSchema.safeParse(message.structured_output)
-      if (parsed.success) {
-        return parsed.data
+    if (message.type === 'result') {
+      const msg = message as Record<string, unknown>
+      if (msg.structured_output) {
+        const parsed = ClassificationSchema.safeParse(msg.structured_output)
+        if (parsed.success) {
+          return parsed.data
+        }
+        throw new Error(
+          `Classification output failed validation: ${JSON.stringify(msg.structured_output)}`,
+        )
       }
-      throw new Error(
-        `Classification output failed validation: ${JSON.stringify(message.structured_output)}`,
-      )
     }
   }
 

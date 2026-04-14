@@ -22,7 +22,7 @@ export function extractBranchDayUnits(
   for (const commit of commits) {
     const key = `${commit.author}::${dateKey(commit.date)}`
     if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(commit)
+    groups.get(key)?.push(commit)
   }
 
   const units: Omit<WorkUnit, 'diff'>[] = []
