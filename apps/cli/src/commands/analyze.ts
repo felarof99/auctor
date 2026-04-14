@@ -18,7 +18,11 @@ import {
 } from '../scoring'
 import type { AuthorStats, Config } from '../types'
 
-export async function analyze(timeWindow: string, path: string): Promise<void> {
+export async function analyze(
+  timeWindow: string,
+  path: string,
+  jsonPath?: string,
+): Promise<void> {
   const repoPath = resolve(path)
   const gitDir = join(repoPath, '.git')
 
@@ -201,4 +205,28 @@ export async function analyze(timeWindow: string, path: string): Promise<void> {
 
   await Bun.write(resultPath, JSON.stringify(result, null, 2))
   console.log(`\nResults written to ${resultPath}`)
+
+  if (jsonPath) {
+    const reportPath = resolve(jsonPath)
+    const reportDir = join(reportPath, '..')
+    mkdirSync(reportDir, { recursive: true })
+
+    const report = {
+      repo: config.repo_url ?? repoName,
+      generated_at: new Date().toISOString(),
+      window_days: daysInWindow,
+      authors: leaderboard.map((s) => ({
+        author: s.author,
+        commits: s.commits,
+        prs: s.prs,
+        insertions: s.insertions,
+        deletions: s.deletions,
+        net: s.net,
+        score: Number(s.score.toFixed(4)),
+      })),
+    }
+
+    await Bun.write(reportPath, JSON.stringify(report, null, 2))
+    console.log(`Report written to ${reportPath}`)
+  }
 }

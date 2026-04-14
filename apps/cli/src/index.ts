@@ -22,8 +22,9 @@ program
   .description('Analyze git history and show leaderboard')
   .argument('<time-window>', 'Time window (e.g., -7d, -30d, 0d)')
   .option('--path <path>', 'Path to git repository', '.')
-  .action(async (timeWindow: string, opts: { path: string }) => {
-    await analyze(timeWindow, opts.path)
+  .option('--json <file>', 'Write RepoReport JSON to file')
+  .action(async (timeWindow: string, opts: { path: string; json?: string }) => {
+    await analyze(timeWindow, opts.path, opts.json)
   })
 
 program.parse()
