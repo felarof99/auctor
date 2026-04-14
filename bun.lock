@@ -72,6 +72,13 @@
         "@types/bun": "^1.3.12",
       },
     },
+    "packages/database": {
+      "name": "@auctor/database",
+      "version": "0.0.1",
+      "dependencies": {
+        "convex": "*",
+      },
+    },
     "packages/shared": {
       "name": "@auctor/shared",
       "version": "0.0.1",
@@ -89,6 +96,8 @@
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.81.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-D4K5PvEV6wPiRtVlVsJHIUhHAmOZ6IT/I9rKlTf84gR7GyyAurPJK7z9BOf/AZqC5d1DhYQGJNKRmV+q8dGhgw=="],
 
     "@auctor/cli": ["@auctor/cli@workspace:apps/cli"],
+
+    "@auctor/database": ["@auctor/database@workspace:packages/database"],
 
     "@auctor/server": ["@auctor/server@workspace:apps/server"],
 
