@@ -1,61 +1,83 @@
 import { describe, expect, test } from 'bun:test'
-import { calculateScore } from './scoring'
+import {
+  calculateAuthorScore,
+  calculateLocFactor,
+  calculateUnitScore,
+} from './scoring'
 
-describe('calculateScore', () => {
-  test('returns 0 for zero activity', () => {
-    const score = calculateScore({
-      author: 'alice',
-      commits: 0,
-      prs: 0,
-      insertions: 0,
-      deletions: 0,
-      net: 0,
-    })
-    expect(score).toBe(0)
+describe('calculateLocFactor', () => {
+  test('returns 0 for 0 LOC', () => {
+    expect(calculateLocFactor(0)).toBe(0)
   })
 
-  test('scores a moderately active engineer', () => {
-    const score = calculateScore({
-      author: 'alice',
-      commits: 10,
-      prs: 2,
-      insertions: 500,
-      deletions: 100,
-      net: 400,
-    })
-    expect(score).toBeGreaterThan(0)
-    expect(score).toBeLessThanOrEqual(1)
+  test('returns ~0.50 for 100 LOC', () => {
+    const result = calculateLocFactor(100)
+    expect(result).toBeGreaterThan(0.49)
+    expect(result).toBeLessThan(0.52)
   })
 
-  test('caps at 1.0 for very high activity', () => {
-    const score = calculateScore({
-      author: 'alice',
-      commits: 100,
-      prs: 20,
-      insertions: 10000,
-      deletions: 1000,
-      net: 9000,
-    })
-    expect(score).toBeLessThanOrEqual(1)
+  test('returns ~0.75 for 1000 LOC', () => {
+    const result = calculateLocFactor(1000)
+    expect(result).toBeGreaterThan(0.74)
+    expect(result).toBeLessThan(0.76)
   })
 
-  test('higher activity produces higher score', () => {
-    const low = calculateScore({
-      author: 'alice',
-      commits: 2,
-      prs: 0,
-      insertions: 50,
-      deletions: 10,
-      net: 40,
+  test('caps at 1.0 for 10000 LOC', () => {
+    expect(calculateLocFactor(10000)).toBe(1.0)
+  })
+
+  test('caps at 1.0 for LOC exceeding cap', () => {
+    expect(calculateLocFactor(50000)).toBe(1.0)
+  })
+
+  test('handles negative LOC (deletions)', () => {
+    const positive = calculateLocFactor(500)
+    const negative = calculateLocFactor(-500)
+    expect(negative).toBeCloseTo(positive, 10)
+  })
+})
+
+describe('calculateUnitScore', () => {
+  test('hard feature with 400 LOC and impact 8 scores ~0.88', () => {
+    const score = calculateUnitScore({
+      net_loc: 400,
+      difficulty: 'hard',
+      type: 'feature',
+      impact_score: 8,
     })
-    const high = calculateScore({
-      author: 'bob',
-      commits: 15,
-      prs: 4,
-      insertions: 1500,
-      deletions: 300,
-      net: 1200,
+    expect(score).toBeGreaterThan(0.85)
+    expect(score).toBeLessThan(0.92)
+  })
+
+  test('chore trivial scores low (< 0.1)', () => {
+    const score = calculateUnitScore({
+      net_loc: 10,
+      difficulty: 'trivial',
+      type: 'chore',
+      impact_score: 1,
     })
-    expect(high).toBeGreaterThan(low)
+    expect(score).toBeLessThan(0.1)
+  })
+
+  test('complex feature scores high (> 1.2)', () => {
+    const score = calculateUnitScore({
+      net_loc: 5000,
+      difficulty: 'complex',
+      type: 'feature',
+      impact_score: 9,
+    })
+    expect(score).toBeGreaterThan(1.2)
+  })
+})
+
+describe('calculateAuthorScore', () => {
+  test('averages unit scores over days in window', () => {
+    const scores = [0.5, 1.0, 1.5]
+    const result = calculateAuthorScore(scores, 7)
+    expect(result).toBeCloseTo(3.0 / 7, 10)
+  })
+
+  test('returns 0 for empty unit scores', () => {
+    expect(calculateAuthorScore([], 7)).toBe(0)
   })
 })
