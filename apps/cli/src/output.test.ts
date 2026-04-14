@@ -13,6 +13,7 @@ describe('renderLeaderboard', () => {
         deletions: 380,
         net: 860,
         score: 0.82,
+        daily_scores: [],
       },
       {
         author: 'bob',
@@ -22,6 +23,7 @@ describe('renderLeaderboard', () => {
         deletions: 120,
         net: 530,
         score: 0.61,
+        daily_scores: [],
       },
     ]
 
@@ -53,6 +55,7 @@ describe('renderLeaderboard', () => {
         deletions: 0,
         net: 10,
         score: 0.5,
+        daily_scores: [],
       },
       {
         author: 'b',
@@ -62,6 +65,7 @@ describe('renderLeaderboard', () => {
         deletions: 0,
         net: 5,
         score: 0.3,
+        daily_scores: [],
       },
     ]
     const output = renderLeaderboard(stats)

@@ -10,8 +10,12 @@ import {
   parseTimeWindow,
 } from '../git/log'
 import { extractBranchDayUnits, extractPrUnits } from '../git/work-units'
-import { renderLeaderboard } from '../output'
-import { calculateAuthorScore, calculateUnitScore } from '../scoring'
+import { renderLeaderboard, renderSparklines } from '../output'
+import {
+  calculateAuthorScore,
+  calculateUnitScore,
+  computeDailyScores,
+} from '../scoring'
 import type { AuthorStats, Config } from '../types'
 
 export async function analyze(timeWindow: string, path: string): Promise<void> {
@@ -101,7 +105,7 @@ export async function analyze(timeWindow: string, path: string): Promise<void> {
   const authorUnitsMap = new Map<
     string,
     {
-      scores: number[]
+      scoredUnits: { date: string; score: number }[]
       commits: number
       prs: number
       insertions: number
@@ -132,14 +136,14 @@ export async function analyze(timeWindow: string, path: string): Promise<void> {
     })
 
     const existing = authorUnitsMap.get(unit.author) ?? {
-      scores: [],
+      scoredUnits: [],
       commits: 0,
       prs: 0,
       insertions: 0,
       deletions: 0,
     }
 
-    existing.scores.push(unitScore)
+    existing.scoredUnits.push({ date: unit.date, score: unitScore })
     existing.commits += unit.commit_shas.length
     if (unit.kind === 'pr') existing.prs++
     existing.insertions += unit.insertions
@@ -148,20 +152,30 @@ export async function analyze(timeWindow: string, path: string): Promise<void> {
     authorUnitsMap.set(unit.author, existing)
   }
 
-  // Build leaderboard
+  // Build leaderboard with daily scores
   const leaderboard: AuthorStats[] = [...authorUnitsMap.entries()]
-    .map(([author, data]) => ({
-      author,
-      commits: data.commits,
-      prs: data.prs,
-      insertions: data.insertions,
-      deletions: data.deletions,
-      net: data.insertions - data.deletions,
-      score: calculateAuthorScore(data.scores, daysInWindow),
-    }))
+    .map(([author, data]) => {
+      const allScores = data.scoredUnits.map((u) => u.score)
+      const daily_scores = computeDailyScores(
+        data.scoredUnits,
+        since,
+        daysInWindow,
+      )
+      return {
+        author,
+        commits: data.commits,
+        prs: data.prs,
+        insertions: data.insertions,
+        deletions: data.deletions,
+        net: data.insertions - data.deletions,
+        score: calculateAuthorScore(allScores, daysInWindow),
+        daily_scores,
+      }
+    })
     .sort((a, b) => b.score - a.score)
 
   console.log(renderLeaderboard(leaderboard))
+  console.log(renderSparklines(leaderboard))
 
   // Write JSON result
   const resultsDir = join(repoPath, '.auctor', 'results')
@@ -181,6 +195,7 @@ export async function analyze(timeWindow: string, path: string): Promise<void> {
       loc_added: s.insertions,
       loc_removed: s.deletions,
       loc_net: s.net,
+      daily_scores: s.daily_scores,
     })),
   }
 

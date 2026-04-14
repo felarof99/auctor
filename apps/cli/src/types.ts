@@ -14,6 +14,11 @@ export interface Commit {
   isMerge: boolean
 }
 
+export interface DailyScore {
+  date: string
+  score: number
+}
+
 export interface AuthorStats {
   author: string
   commits: number
@@ -22,4 +27,5 @@ export interface AuthorStats {
   deletions: number
   net: number
   score: number
+  daily_scores: DailyScore[]
 }

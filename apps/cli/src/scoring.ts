@@ -34,3 +34,28 @@ export function calculateAuthorScore(
   const sum = unitScores.reduce((a, b) => a + b, 0)
   return sum / daysInWindow
 }
+
+export function computeDailyScores(
+  scoredUnits: { date: string; score: number }[],
+  since: Date,
+  daysInWindow: number,
+): { date: string; score: number }[] {
+  const dailyMap = new Map<string, number>()
+
+  for (const unit of scoredUnits) {
+    dailyMap.set(unit.date, (dailyMap.get(unit.date) ?? 0) + unit.score)
+  }
+
+  const result: { date: string; score: number }[] = []
+  for (let i = 0; i < daysInWindow; i++) {
+    const d = new Date(since)
+    d.setDate(d.getDate() + i)
+    const key = d.toISOString().split('T')[0]
+    result.push({
+      date: key,
+      score: Math.round((dailyMap.get(key) ?? 0) * 100) / 100,
+    })
+  }
+
+  return result
+}
