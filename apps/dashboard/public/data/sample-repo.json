@@ -1,0 +1,43 @@
+{
+  "repo": "acme/core",
+  "generated_at": "2026-04-14T12:00:00.000Z",
+  "window_days": 7,
+  "authors": [
+    {
+      "author": "Alice Chen",
+      "commits": 12,
+      "prs": 4,
+      "insertions": 1240,
+      "deletions": 380,
+      "net": 860,
+      "score": 0.82
+    },
+    {
+      "author": "Bob Rivera",
+      "commits": 8,
+      "prs": 3,
+      "insertions": 650,
+      "deletions": 120,
+      "net": 530,
+      "score": 0.61
+    },
+    {
+      "author": "Carol Zhang",
+      "commits": 6,
+      "prs": 2,
+      "insertions": 420,
+      "deletions": 110,
+      "net": 310,
+      "score": 0.48
+    },
+    {
+      "author": "Dave Kim",
+      "commits": 4,
+      "prs": 1,
+      "insertions": 280,
+      "deletions": 90,
+      "net": 190,
+      "score": 0.33
+    }
+  ]
+}
