@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021", "ES2022.Error"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@auth/core/types": ["../node_modules/@auth/core/types"]
+    }
+  },
+  "include": ["./**/*"],
+  "exclude": ["../node_modules/**/*"]
+}
