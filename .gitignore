@@ -1,6 +1,9 @@
 # New stuff
 **/.omc/**
 
+# Convex generated JS (only .d.ts should be committed)
+convex/_generated/*.js
+
 # Logs
 logs
 *.log
