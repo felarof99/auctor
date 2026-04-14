@@ -17,6 +17,10 @@ export class RepoManager {
   }
 
   async ensureRepo(repoUrl: string): Promise<string> {
+    if (existsSync(join(repoUrl, '.git'))) {
+      return repoUrl
+    }
+
     const dir = this.repoDir(repoUrl)
 
     if (existsSync(join(dir, '.git'))) {

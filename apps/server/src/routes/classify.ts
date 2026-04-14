@@ -42,9 +42,23 @@ classifyRoute.post('/classify', async (c) => {
       continue
     }
 
-    const classification = await classifyWorkUnit(unit, repoDir)
-    cache.set(unit.id, classification)
-    classifications.push({ id: unit.id, classification })
+    try {
+      const classification = await classifyWorkUnit(unit, repoDir)
+      cache.set(unit.id, classification)
+      classifications.push({ id: unit.id, classification })
+    } catch (err) {
+      console.warn(
+        `Classification failed for ${unit.id}, using default:`,
+        err instanceof Error ? err.message : err,
+      )
+      const fallback = {
+        type: 'feature' as const,
+        difficulty: 'medium' as const,
+        impact_score: 5,
+        reasoning: `Classification failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      }
+      classifications.push({ id: unit.id, classification: fallback })
+    }
   }
 
   return c.json({ classifications } satisfies ClassifyResponse)

@@ -13,6 +13,12 @@ export function buildClassificationPrompt(unit: WorkUnit): string {
 
   const commits = unit.commit_messages.map((msg) => `- ${msg}`).join('\n')
 
+  const maxDiffChars = 4000
+  const diff =
+    unit.diff.length > maxDiffChars
+      ? `${unit.diff.slice(0, maxDiffChars)}\n\n... (truncated, ${unit.diff.length - maxDiffChars} chars omitted)`
+      : unit.diff
+
   return `You are classifying a work unit (a pull request or a day of branch activity).
 
 ## Metadata
@@ -26,7 +32,7 @@ ${commits}
 ## Diff
 
 \`\`\`diff
-${unit.diff}
+${diff}
 \`\`\`
 
 ## Classification Instructions
