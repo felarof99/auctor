@@ -40,3 +40,47 @@ export function parseTimeWindow(window: string): Date {
   date.setHours(0, 0, 0, 0)
   return date
 }
+
+export async function getGitLog(
+  repoPath: string,
+  since: Date,
+): Promise<string> {
+  const proc = Bun.spawn(
+    [
+      'git',
+      'log',
+      '--all',
+      '--shortstat',
+      '--format=COMMIT_START%n%H%n%an%n%aI%n%s',
+      `--since=${since.toISOString()}`,
+    ],
+    { cwd: repoPath, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const output = await new Response(proc.stdout).text()
+  const exitCode = await proc.exited
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text()
+    throw new Error(`git log failed: ${stderr}`)
+  }
+  return output
+}
+
+export async function getMergeCommits(
+  repoPath: string,
+  since: Date,
+): Promise<Set<string>> {
+  const proc = Bun.spawn(
+    [
+      'git',
+      'log',
+      '--all',
+      '--merges',
+      '--format=%H',
+      `--since=${since.toISOString()}`,
+    ],
+    { cwd: repoPath, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const output = await new Response(proc.stdout).text()
+  await proc.exited
+  return new Set(output.trim().split('\n').filter(Boolean))
+}
