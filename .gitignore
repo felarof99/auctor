@@ -82,3 +82,5 @@ packages/*/dist
 
 # Testing temp files
 tmp/
+
+.auctor.json
