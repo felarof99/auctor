@@ -1,6 +1,6 @@
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import * as clack from '@clack/prompts'
-import { existsSync } from 'fs'
-import { join, resolve } from 'path'
 import { getUniqueAuthors } from '../git/authors'
 import { parseTimeWindow } from '../git/log'
 import type { Config } from '../types'

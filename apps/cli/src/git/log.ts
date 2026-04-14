@@ -34,7 +34,7 @@ export function parseTimeWindow(window: string): Date {
       `Invalid time window: ${window}. Expected format: -7d, -30d, 0d`,
     )
   }
-  const days = parseInt(match[1])
+  const days = parseInt(match[1], 10)
   const date = new Date()
   date.setDate(date.getDate() - days)
   date.setHours(0, 0, 0, 0)
