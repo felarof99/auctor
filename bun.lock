@@ -23,6 +23,7 @@
         "auctor": "./src/index.ts",
       },
       "dependencies": {
+        "@auctor/database": "workspace:*",
         "@auctor/shared": "workspace:*",
         "@clack/prompts": "^0.10.0",
         "cli-table3": "^0.6.5",
