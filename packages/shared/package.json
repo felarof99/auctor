@@ -1,0 +1,30 @@
+{
+  "name": "@auctor/shared",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./classification": {
+      "types": "./src/classification.ts",
+      "default": "./src/classification.ts"
+    },
+    "./scoring-weights": {
+      "types": "./src/scoring-weights.ts",
+      "default": "./src/scoring-weights.ts"
+    },
+    "./api-types": {
+      "types": "./src/api-types.ts",
+      "default": "./src/api-types.ts"
+    },
+    "./report": {
+      "types": "./src/report.ts",
+      "default": "./src/report.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  }
+}

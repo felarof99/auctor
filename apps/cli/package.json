@@ -13,6 +13,8 @@
   "dependencies": {
     "commander": "^13.0.0",
     "@clack/prompts": "^0.10.0",
-    "cli-table3": "^0.6.5"
+    "cli-table3": "^0.6.5",
+    "@auctor/database": "workspace:*",
+    "@auctor/shared": "workspace:*"
   }
 }

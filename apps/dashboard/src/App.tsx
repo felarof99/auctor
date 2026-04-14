@@ -1,182 +1,121 @@
-import { createClient } from '@supabase/supabase-js'
-import {
-  ExternalLink,
-  Eye,
-  Heart,
-  MessageCircle,
-  RefreshCw,
-  Repeat2,
-  Search,
-  TrendingUp,
-} from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-
+import type { RepoAuthorStats } from '@auctor/shared/report'
+import { RefreshCw, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import { useReports } from '@/src/hooks/use-reports'
 
-type Tweet = {
-  tweet_id: string
-  tweet_url: string
-  author_handle: string
-  author_name: string
-  content: string
-  posted_at: string | null
-  extracted_at: string | null
-  likes: number | null
-  retweets: number | null
-  replies: number | null
-  views: number | null
-  links: string[] | null
-  ext_velocity_score: number | null
-  ext_velocity_rank: number | null
+type SortKey = keyof Pick<
+  RepoAuthorStats,
+  'score' | 'commits' | 'prs' | 'insertions' | 'deletions' | 'net'
+>
+
+const RANK_COLORS: Record<number, string> = {
+  1: 'text-yellow-400',
+  2: 'text-gray-300',
+  3: 'text-amber-600',
 }
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
-  | string
-  | undefined
-
-const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null
-
-function formatCompactInt(n: number) {
-  return new Intl.NumberFormat(undefined, {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(n)
+function formatNumber(n: number): string {
+  return n.toLocaleString()
 }
 
-function formatLocalDateTime(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(d)
-}
-
-function sinceIso(hours: number) {
-  return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+function SortableHeader({
+  label,
+  sortKey,
+  currentSort,
+  currentDir,
+  onSort,
+}: {
+  label: string
+  sortKey: SortKey
+  currentSort: SortKey
+  currentDir: 'asc' | 'desc'
+  onSort: (key: SortKey) => void
+}) {
+  const isActive = currentSort === sortKey
+  return (
+    <th
+      className="cursor-pointer select-none px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider hover:text-foreground"
+      onClick={() => onSort(sortKey)}
+    >
+      {label}
+      {isActive ? (currentDir === 'desc' ? ' \u2193' : ' \u2191') : ''}
+    </th>
+  )
 }
 
 export function App() {
-  const [tweets, setTweets] = useState<Tweet[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const { reports, repoNames, loading, error, refresh } = useReports()
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<SortKey>('score')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const loadTweets = useCallback(async () => {
-    if (!supabase) return
+  const activeRepo = selectedRepo ?? repoNames[0] ?? null
+  const report = activeRepo ? reports[activeRepo] : null
 
-    setLoading(true)
-    setError(null)
-    try {
-      const since = sinceIso(24)
-      const { data, error: qErr } = await supabase
-        .from('tweets')
-        .select(
-          [
-            'tweet_id',
-            'tweet_url',
-            'author_handle',
-            'author_name',
-            'content',
-            'posted_at',
-            'extracted_at',
-            'likes',
-            'retweets',
-            'replies',
-            'views',
-            'links',
-            'ext_velocity_score',
-            'ext_velocity_rank',
-          ].join(','),
-        )
-        .gte('extracted_at', since)
-        .order('extracted_at', { ascending: false })
-        .limit(250)
-
-      if (qErr) throw new Error(qErr.message)
-
-      setTweets((data ?? []) as unknown as Tweet[])
-      setLastUpdatedAt(new Date().toISOString())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
     }
-  }, [])
-
-  useEffect(() => {
-    loadTweets()
-  }, [loadTweets])
-
-  useEffect(() => {
-    if (!autoRefresh) return
-    const id = window.setInterval(() => {
-      loadTweets()
-    }, 15_000)
-    return () => window.clearInterval(id)
-  }, [autoRefresh, loadTweets])
+  }
 
   const filtered = useMemo(() => {
+    if (!report) return []
+    let authors = report.authors
     const q = query.trim().toLowerCase()
-    if (!q) return tweets
-    return tweets.filter((t) => {
-      const haystack = [
-        t.author_handle,
-        t.author_name,
-        t.content,
-        t.tweet_url,
-        ...(t.links ?? []),
-      ]
-        .filter(Boolean)
-        .join('\n')
-        .toLowerCase()
-      return haystack.includes(q)
+    if (q) {
+      authors = authors.filter((a) => a.author.toLowerCase().includes(q))
+    }
+    const sorted = [...authors].sort((a, b) => {
+      const av = a[sortKey]
+      const bv = b[sortKey]
+      return sortDir === 'desc' ? bv - av : av - bv
     })
-  }, [tweets, query])
+    return sorted
+  }, [report, query, sortKey, sortDir])
 
-  if (!supabase) {
+  if (loading) {
+    return (
+      <div className="min-h-dvh bg-background text-foreground">
+        <div className="mx-auto max-w-5xl px-6 py-10">
+          <Skeleton className="mb-4 h-8 w-48" />
+          <Skeleton className="mb-8 h-4 w-72" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
     return (
       <div className="min-h-dvh bg-background text-foreground">
         <div className="mx-auto max-w-4xl px-6 py-10">
-          <Card>
+          <Card className="border-destructive/50">
             <CardHeader>
-              <CardTitle>Twitter Extractor Dashboard</CardTitle>
-              <CardDescription>
-                Missing Supabase env vars. Set these in `apps/dashboard/.env`
-                (or export them before running Vite):
-              </CardDescription>
+              <CardTitle className="text-destructive">
+                Failed to load data
+              </CardTitle>
+              <CardDescription>{error}</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm">
-              <pre className="overflow-auto rounded-md border bg-muted p-3">
-                {`VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...`}
-              </pre>
-              <div className="mt-4 text-muted-foreground">
-                Your Supabase table should be named `tweets` (see
-                `apps/extractor/sql/schema.sql`).
-              </div>
+            <CardContent className="text-muted-foreground text-sm">
+              Make sure <code>public/data/manifest.json</code> exists and lists
+              valid repo JSON files.
             </CardContent>
           </Card>
         </div>
@@ -187,198 +126,172 @@ VITE_SUPABASE_ANON_KEY=...`}
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-10">
+        {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <div className="text-muted-foreground text-sm">Supabase</div>
-            <h1 className="font-semibold text-2xl leading-none">
-              Extracted Tweets (Last 24h)
-            </h1>
+            <h1 className="font-semibold text-2xl leading-none">auctor</h1>
             <div className="text-muted-foreground text-sm">
-              {lastUpdatedAt ? (
-                <>Last updated {formatLocalDateTime(lastUpdatedAt)}</>
-              ) : (
-                <>Not updated yet</>
-              )}
+              Engineering Productivity Leaderboard
             </div>
           </div>
-
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setAutoRefresh((v) => !v)}
-            >
-              <TrendingUp className="size-4" />
-              Auto-refresh: {autoRefresh ? 'On' : 'Off'}
-            </Button>
-            <Button type="button" onClick={loadTweets} disabled={loading}>
-              <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+            {report && (
+              <Badge variant="outline">{report.window_days}d window</Badge>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="size-4" />
               Refresh
             </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Repo Tabs */}
+        {repoNames.length > 1 && (
+          <Tabs value={activeRepo ?? undefined} onValueChange={setSelectedRepo}>
+            <TabsList>
+              {repoNames.map((name) => (
+                <TabsTrigger key={name} value={name}>
+                  {name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
+
+        {/* Search */}
+        <div className="flex items-center gap-2">
           <div className="relative min-w-[260px] flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by author, content, URL, link..."
+              placeholder="Filter by author name..."
               className="pl-9"
             />
           </div>
-          <Badge variant="secondary">{filtered.length} tweets</Badge>
-          <Badge variant="outline">
-            Window since {formatLocalDateTime(sinceIso(24))}
+          <Badge variant="secondary">
+            {filtered.length} author{filtered.length !== 1 ? 's' : ''}
           </Badge>
         </div>
 
-        {error ? (
-          <Card className="border-destructive/50">
+        {/* Leaderboard Table */}
+        {filtered.length === 0 ? (
+          <Card>
             <CardHeader>
-              <CardTitle className="text-destructive">Query failed</CardTitle>
-              <CardDescription>{error}</CardDescription>
+              <CardTitle>No authors found</CardTitle>
+              <CardDescription>
+                {query
+                  ? 'Try a different search.'
+                  : 'No data available for this repo.'}
+              </CardDescription>
             </CardHeader>
           </Card>
-        ) : null}
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-border border-b bg-muted/50">
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                    Rank
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                    Author
+                  </th>
+                  <SortableHeader
+                    label="Commits"
+                    sortKey="commits"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="PRs"
+                    sortKey="prs"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="+LOC"
+                    sortKey="insertions"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="-LOC"
+                    sortKey="deletions"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Net"
+                    sortKey="net"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Score"
+                    sortKey="score"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((author, i) => {
+                  const rank = i + 1
+                  return (
+                    <tr
+                      key={author.author}
+                      className="border-border border-b last:border-0 hover:bg-muted/30"
+                    >
+                      <td
+                        className={cn(
+                          'px-4 py-3 font-bold',
+                          RANK_COLORS[rank] ?? 'text-muted-foreground',
+                        )}
+                      >
+                        {rank}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-foreground">
+                        {author.author}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {author.commits}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {author.prs}
+                      </td>
+                      <td className="px-4 py-3 text-right text-green-400">
+                        {formatNumber(author.insertions)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {formatNumber(author.deletions)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {formatNumber(author.net)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-indigo-400">
+                        {author.score.toFixed(2)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        <Separator />
-
-        <div className="flex flex-col gap-4">
-          {loading && tweets.length === 0 ? (
-            <>
-              <Card>
-                <CardHeader>
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-3 w-72" />
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-11/12" />
-                  <Skeleton className="h-4 w-10/12" />
-                </CardContent>
-                <CardFooter>
-                  <Skeleton className="h-6 w-24" />
-                </CardFooter>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <Skeleton className="h-4 w-52" />
-                  <Skeleton className="h-3 w-64" />
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-10/12" />
-                </CardContent>
-                <CardFooter>
-                  <Skeleton className="h-6 w-28" />
-                </CardFooter>
-              </Card>
-            </>
-          ) : filtered.length === 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>No tweets found</CardTitle>
-                <CardDescription>
-                  Either nothing was extracted in the last hour, or your
-                  Supabase RLS policy blocks anon reads.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-muted-foreground text-sm">
-                Check `apps/extractor/sql/schema.sql` and ensure the extractor
-                is writing to the same project/table.
-              </CardContent>
-            </Card>
-          ) : (
-            filtered.map((t) => (
-              <Card key={t.tweet_id} className="py-5">
-                <CardHeader className="pb-0">
-                  <CardTitle className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">{t.author_name}</span>
-                    <span className="font-normal text-muted-foreground">
-                      @{t.author_handle}
-                    </span>
-                    {t.ext_velocity_rank != null ? (
-                      <Badge variant="secondary">
-                        rank {t.ext_velocity_rank}
-                      </Badge>
-                    ) : null}
-                    {t.ext_velocity_score != null ? (
-                      <Badge variant="outline">
-                        v {t.ext_velocity_score.toFixed(2)}
-                      </Badge>
-                    ) : null}
-                  </CardTitle>
-                  <CardDescription>
-                    {t.posted_at ? (
-                      <>Posted {formatLocalDateTime(t.posted_at)}</>
-                    ) : (
-                      <>Posted time unknown</>
-                    )}
-                    {t.extracted_at ? (
-                      <> · Extracted {formatLocalDateTime(t.extracted_at)}</>
-                    ) : null}
-                  </CardDescription>
-                  <CardAction>
-                    <Button asChild variant="outline" size="sm">
-                      <a href={t.tweet_url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="size-4" />
-                        Open
-                      </a>
-                    </Button>
-                  </CardAction>
-                </CardHeader>
-
-                <CardContent className="pt-0">
-                  <div className="whitespace-pre-wrap text-sm leading-6">
-                    {t.content}
-                  </div>
-
-                  {t.links && t.links.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {t.links.slice(0, 8).map((u) => (
-                        <Badge key={u} variant="outline" asChild>
-                          <a
-                            href={u}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="max-w-full truncate"
-                            title={u}
-                          >
-                            {u}
-                          </a>
-                        </Badge>
-                      ))}
-                      {t.links.length > 8 ? (
-                        <Badge variant="secondary">+{t.links.length - 8}</Badge>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </CardContent>
-
-                <CardFooter className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">
-                    <Heart className="size-3" />
-                    {formatCompactInt(t.likes ?? 0)}
-                  </Badge>
-                  <Badge variant="secondary">
-                    <Repeat2 className="size-3" />
-                    {formatCompactInt(t.retweets ?? 0)}
-                  </Badge>
-                  <Badge variant="secondary">
-                    <MessageCircle className="size-3" />
-                    {formatCompactInt(t.replies ?? 0)}
-                  </Badge>
-                  <Badge variant="secondary">
-                    <Eye className="size-3" />
-                    {formatCompactInt(t.views ?? 0)}
-                  </Badge>
-                </CardFooter>
-              </Card>
-            ))
-          )}
-        </div>
+        {/* Footer */}
+        {report && (
+          <div className="text-muted-foreground text-xs">
+            Generated {new Date(report.generated_at).toLocaleString()}
+          </div>
+        )}
       </div>
     </div>
   )
