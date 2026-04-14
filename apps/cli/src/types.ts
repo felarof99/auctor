@@ -1,5 +1,7 @@
 export interface Config {
   authors: string[]
+  server_url?: string
+  repo_url?: string
 }
 
 export interface Commit {
