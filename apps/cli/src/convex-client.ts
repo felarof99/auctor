@@ -4,7 +4,6 @@ import type { Classification, WorkUnit } from '@auctor/shared/classification'
 
 // biome-ignore lint/suspicious/noExplicitAny: Convex _generated/api.ts not yet generated — replace with typed imports after `npx convex dev`
 type Api = any
-// biome-ignore lint/suspicious/noExplicitAny: placeholder until generated types available
 type Id<_T extends string> = string
 
 export function createConvexClient(url: string): ConvexClient {

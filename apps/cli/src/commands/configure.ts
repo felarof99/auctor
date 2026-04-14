@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import * as clack from '@clack/prompts'
+import { createConvexClient, ensureAuthors, ensureRepo } from '../convex-client'
 import { getUniqueAuthors } from '../git/authors'
 import { parseTimeWindow } from '../git/log'
 import type { Config } from '../types'
@@ -26,11 +27,11 @@ export async function configure(
   }
 
   const configPath = join(repoPath, '.auctor.json')
-  let existingAuthors: string[] = []
+  let existingConfig: Partial<Config> = {}
   if (existsSync(configPath)) {
-    const existing: Config = JSON.parse(await Bun.file(configPath).text())
-    existingAuthors = existing.authors
+    existingConfig = JSON.parse(await Bun.file(configPath).text())
   }
+  const existingAuthors = existingConfig.authors ?? []
 
   clack.intro('auctor configure')
 
@@ -48,8 +49,27 @@ export async function configure(
     process.exit(0)
   }
 
-  const config: Config = { authors: selected as string[] }
+  const config: Config = { ...existingConfig, authors: selected as string[] }
   await Bun.write(configPath, JSON.stringify(config, null, 2))
+
+  if (config.convex_url) {
+    try {
+      const client = createConvexClient(config.convex_url)
+      const repoName = config.repo_url ?? basename(repoPath)
+      const repoId = await ensureRepo(client, repoName)
+      await ensureAuthors(
+        client,
+        repoId,
+        config.authors.map((a) => ({ username: a, whitelisted: true })),
+      )
+      clack.log.success('Synced to Convex')
+      await client.close()
+    } catch (err) {
+      clack.log.warn(
+        `Failed to sync to Convex: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
 
   clack.outro(`Saved ${config.authors.length} authors to .auctor.json`)
 }
