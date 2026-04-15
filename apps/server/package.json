@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.108",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.109",
     "@auctor/shared": "workspace:*",
     "better-sqlite3": "^11.0.0",
     "hono": "^4.7.0",
