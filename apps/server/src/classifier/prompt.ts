@@ -13,7 +13,7 @@ export function buildClassificationPrompt(unit: WorkUnit): string {
 
   const commits = unit.commit_messages.map((msg) => `- ${msg}`).join('\n')
 
-  const maxDiffChars = 4000
+  const maxDiffChars = 64000
   const diff =
     unit.diff.length > maxDiffChars
       ? `${unit.diff.slice(0, maxDiffChars)}\n\n... (truncated, ${unit.diff.length - maxDiffChars} chars omitted)`
