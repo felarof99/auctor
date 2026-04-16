@@ -1,0 +1,14 @@
+node_modules
+.git
+.env
+.env.local
+dist
+*.md
+.llm
+.claude
+.omc
+.config
+apps/cli
+apps/dashboard
+convex/_generated
+docs
