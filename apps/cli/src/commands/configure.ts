@@ -19,9 +19,9 @@ export async function configure(
   }
 
   const since = parseTimeWindow(timeWindow)
-  const authors = await getUniqueAuthors(repoPath, since)
+  const authorInfos = await getUniqueAuthors(repoPath, since)
 
-  if (authors.length === 0) {
+  if (authorInfos.length === 0) {
     console.error(`No authors found in the last ${timeWindow}`)
     process.exit(1)
   }
@@ -36,12 +36,14 @@ export async function configure(
   clack.intro('auctor configure')
 
   const selected = await clack.multiselect({
-    message: 'Select authors to track:',
-    options: authors.map((a) => ({
-      value: a,
-      label: a,
+    message: 'Select authors to track (GitHub usernames):',
+    options: authorInfos.map((a) => ({
+      value: a.username,
+      label: a.username === a.name ? a.username : `${a.username} (${a.name})`,
     })),
-    initialValues: existingAuthors.filter((a) => authors.includes(a)),
+    initialValues: existingAuthors.filter((a) =>
+      authorInfos.some((info) => info.username === a),
+    ),
   })
 
   if (clack.isCancel(selected)) {
