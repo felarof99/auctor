@@ -3,7 +3,7 @@ import type { WorkUnit } from '@auctor/shared/classification'
 import { buildClassificationPrompt } from './prompt'
 
 describe('classifyWorkUnit', () => {
-  test('prompt is well-formed for Agent SDK', () => {
+  test('prompt is well-formed for Bedrock classification', () => {
     const unit: WorkUnit = {
       id: 'test-id',
       kind: 'branch-day',

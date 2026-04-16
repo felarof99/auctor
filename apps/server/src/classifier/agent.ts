@@ -1,48 +1,79 @@
-import { query } from '@anthropic-ai/claude-agent-sdk'
 import {
   type Classification,
   ClassificationSchema,
   type WorkUnit,
 } from '@auctor/shared/classification'
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+} from '@aws-sdk/client-bedrock-runtime'
 import { buildClassificationPrompt } from './prompt'
 
-const classificationJsonSchema = zodToJsonSchema(ClassificationSchema, {
-  $refStrategy: 'root',
-})
+const REGION = process.env.AWS_REGION ?? 'us-east-1'
+const MODEL_ID =
+  process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-haiku-4-5-20251001'
+
+const client = new BedrockRuntimeClient({ region: REGION })
+
+// JSON schema matching ClassificationSchema for Bedrock structured output
+const classificationJsonSchema = {
+  type: 'object',
+  properties: {
+    type: {
+      type: 'string',
+      enum: ['feature', 'bugfix', 'refactor', 'chore', 'test', 'docs'],
+    },
+    difficulty: {
+      type: 'string',
+      enum: ['trivial', 'easy', 'medium', 'hard', 'complex'],
+    },
+    impact_score: { type: 'number', minimum: 0, maximum: 10 },
+    reasoning: { type: 'string' },
+  },
+  required: ['type', 'difficulty', 'impact_score', 'reasoning'],
+  additionalProperties: false,
+}
 
 export async function classifyWorkUnit(
   unit: WorkUnit,
-  repoDir: string,
+  _repoDir: string,
 ): Promise<Classification> {
   const prompt = buildClassificationPrompt(unit)
 
-  for await (const message of query({
-    prompt,
-    options: {
-      allowedTools: ['Read', 'Grep', 'Bash'],
-      cwd: repoDir,
-      model: 'haiku',
-      maxTurns: 3,
-      outputFormat: {
+  // Call Bedrock Converse with structured JSON output
+  const command = new ConverseCommand({
+    modelId: MODEL_ID,
+    messages: [{ role: 'user', content: [{ text: prompt }] }],
+    inferenceConfig: { maxTokens: 1024, temperature: 0 },
+    outputConfig: {
+      textFormat: {
         type: 'json_schema',
-        schema: classificationJsonSchema,
+        structure: {
+          jsonSchema: {
+            schema: JSON.stringify(classificationJsonSchema),
+            name: 'classification',
+            description: 'Classify a code work unit',
+          },
+        },
       },
     },
-  })) {
-    if (message.type === 'result') {
-      const msg = message as Record<string, unknown>
-      if (msg.structured_output) {
-        const parsed = ClassificationSchema.safeParse(msg.structured_output)
-        if (parsed.success) {
-          return parsed.data
-        }
-        throw new Error(
-          `Classification output failed validation: ${JSON.stringify(msg.structured_output)}`,
-        )
-      }
-    }
+  })
+
+  const response = await client.send(command)
+
+  // Extract text from response
+  const textBlock = response.output?.message?.content?.find(
+    (b): b is { text: string } => 'text' in b,
+  )
+  if (!textBlock) {
+    throw new Error('Bedrock response contained no text content')
   }
 
-  throw new Error('Agent SDK query completed without a result')
+  // Validate against Zod schema
+  const parsed = ClassificationSchema.safeParse(JSON.parse(textBlock.text))
+  if (!parsed.success) {
+    throw new Error(`Classification validation failed: ${parsed.error.message}`)
+  }
+
+  return parsed.data
 }

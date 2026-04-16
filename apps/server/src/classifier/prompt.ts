@@ -58,8 +58,6 @@ Classify this work unit by providing:
 
 **reasoning** — a brief explanation of why you chose the type, difficulty, and impact score.
 
-You can use the Read, Grep, and Bash tools to explore the repository for additional context before classifying.
-
 Return your classification as JSON matching this schema:
 \`\`\`json
 {
