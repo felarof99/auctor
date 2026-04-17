@@ -11,6 +11,7 @@ const program = new Command()
 
 program
   .command('configure')
+  .allowUnknownOption()
   .description('Add a repo to a bundle and refresh its engineer list')
   .argument('<config>', 'Path to bundle YAML file')
   .argument('<repo>', 'Path to git repository to add')
@@ -21,6 +22,7 @@ program
 
 program
   .command('analyze')
+  .allowUnknownOption()
   .description(
     'Analyze a bundle: one leaderboard across all repos in the bundle',
   )
@@ -43,6 +45,7 @@ program
 
 program
   .command('microscope')
+  .allowUnknownOption()
   .description('Zoom into one engineer across a bundle, grouped by day')
   .argument('<config>', 'Path to bundle YAML file')
   .argument('<time-window>', 'Time window (e.g., -7d, -30d)')

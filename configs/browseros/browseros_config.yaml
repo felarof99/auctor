@@ -1,4 +1,16 @@
 name: browseros
 server_url: https://auctor-server.fly.dev
-repos: []
-engineers: []
+repos:
+  - name: browseros-main
+    path: /Users/felarof01/Workspaces/build/browseros-main
+  - name: browseros-workers
+    path: /Users/felarof01/Workspaces/build/browseros-workers
+  - name: browseros-ai-gateway
+    path: /Users/felarof01/Workspaces/build/browseros-ai-gateway
+engineers:
+  - DaniAkash
+  - mittal.shivam103
+  - neelgupta04
+  - nikhilsv92
+  - nithin.sonti
+  - shivammittal274
