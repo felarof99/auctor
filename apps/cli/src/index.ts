@@ -20,9 +20,11 @@ program
 
 program
   .command('analyze')
-  .description('Analyze git history and show leaderboard')
+  .description(
+    'Analyze a bundle: one leaderboard across all repos in the bundle',
+  )
+  .argument('<config>', 'Path to bundle YAML file')
   .argument('<time-window>', 'Time window (e.g., -7d, -30d, 0d)')
-  .option('--path <path>', 'Path to git repository', '.')
   .option('--json <file>', 'Write RepoReport JSON to file')
   .option(
     '--no-fetch',
@@ -30,10 +32,11 @@ program
   )
   .action(
     async (
+      configPath: string,
       timeWindow: string,
-      opts: { path: string; json?: string; fetch: boolean },
+      opts: { json?: string; fetch: boolean },
     ) => {
-      await analyze(timeWindow, opts.path, opts.json, { fetch: opts.fetch })
+      await analyze(configPath, timeWindow, opts.json, { fetch: opts.fetch })
     },
   )
 

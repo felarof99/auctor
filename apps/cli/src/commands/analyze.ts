@@ -1,12 +1,17 @@
 import { existsSync, mkdirSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { ConvexClient } from '@auctor/database/client'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import {
   DIFFICULTY_WEIGHTS,
   TYPE_WEIGHTS,
 } from '@auctor/shared/scoring-weights'
+import {
+  aggregateBundleResults,
+  type PerRepoScoredUnit,
+} from '../analyze-aggregate'
 import { classifyWorkUnits } from '../api-client'
+import { loadBundle } from '../bundle'
 import {
   buildWorkUnitPayload,
   createConvexClient,
@@ -26,48 +31,49 @@ import {
 } from '../git/log'
 import { extractBranchDayUnits, extractPrUnits } from '../git/work-units'
 import { renderLeaderboard, renderSparklines } from '../output'
-import {
-  calculateAuthorScore,
-  calculateLocFactor,
-  calculateUnitScore,
-  computeDailyScores,
-} from '../scoring'
-import type { AuthorStats, Config } from '../types'
+import { calculateLocFactor, calculateUnitScore } from '../scoring'
+import type { BundleConfig, BundleRepo } from '../types'
 
 export async function analyze(
+  configPath: string,
   timeWindow: string,
-  path: string,
   jsonPath?: string,
   options?: { fetch?: boolean },
 ): Promise<void> {
-  const repoPath = resolve(path)
-  const gitDir = join(repoPath, '.git')
+  const absoluteConfigPath = resolve(configPath)
+  const bundle = await loadBundle(absoluteConfigPath)
 
-  if (!existsSync(gitDir)) {
-    console.error(`Not a git repository: ${repoPath}`)
+  const validRepos = bundle.repos.filter((r) => {
+    if (!existsSync(`${r.path}/.git`)) {
+      console.warn(`Skipping ${r.name}: ${r.path} is not a git repo`)
+      return false
+    }
+    return true
+  })
+  if (validRepos.length === 0) {
+    console.error('No valid repos in bundle.')
+    process.exit(1)
+  }
+  if (bundle.engineers.length === 0) {
+    console.error('No engineers in bundle. Run `auctor configure` first.')
     process.exit(1)
   }
 
-  const configPath = join(repoPath, '.auctor.json')
-  if (!existsSync(configPath)) {
-    console.error('No config found. Run `auctor configure` first.')
-    process.exit(1)
-  }
-
-  const config: Config = JSON.parse(await Bun.file(configPath).text())
+  const since = parseTimeWindow(timeWindow)
+  const daysMatch = timeWindow.match(/^-?(\d+)d$/)
+  const daysInWindow = daysMatch ? Number.parseInt(daysMatch[1], 10) : 7
 
   let convexClient: ConvexClient | null = null
-  let repoId: string | null = null
-  let authorIdMap = new Map<string, string>()
-
-  if (config.convex_url) {
+  let bundleRepoId: string | null = null
+  let bundleAuthorIdMap = new Map<string, string>()
+  if (bundle.convex_url) {
     try {
-      convexClient = createConvexClient(config.convex_url)
-      repoId = await ensureRepo(convexClient, basename(repoPath))
-      authorIdMap = await ensureAuthors(
+      convexClient = createConvexClient(bundle.convex_url)
+      bundleRepoId = await ensureRepo(convexClient, bundle.name)
+      bundleAuthorIdMap = await ensureAuthors(
         convexClient,
-        repoId,
-        config.authors.map((username) => ({ username, whitelisted: true })),
+        bundleRepoId,
+        bundle.engineers.map((username) => ({ username, whitelisted: true })),
       )
     } catch (err) {
       console.warn(
@@ -75,64 +81,162 @@ export async function analyze(
         err,
       )
       convexClient = null
-      repoId = null
-      authorIdMap = new Map()
+      bundleRepoId = null
+      bundleAuthorIdMap = new Map()
     }
   }
 
-  const since = parseTimeWindow(timeWindow)
+  const allScoredUnits: PerRepoScoredUnit[] = []
+  for (const repo of validRepos) {
+    const units = await analyzeSingleRepo(
+      repo,
+      bundle,
+      since,
+      convexClient,
+      options,
+    )
+    allScoredUnits.push(...units)
+  }
+
+  const leaderboard = aggregateBundleResults(
+    allScoredUnits,
+    since,
+    daysInWindow,
+  )
+
+  if (convexClient && bundleRepoId) {
+    try {
+      await insertAnalysisRun(convexClient, {
+        repoId: bundleRepoId,
+        timeWindow,
+        analyzedAt: new Date().toISOString(),
+        daysInWindow,
+        authorScores: leaderboard.map((s) => ({
+          authorId: bundleAuthorIdMap.get(s.author) ?? '',
+          username: s.author,
+          commits: s.commits,
+          locAdded: s.insertions,
+          locRemoved: s.deletions,
+          locNet: s.net,
+          score: s.score,
+        })),
+      })
+    } catch (err) {
+      console.warn('Warning: Failed to upload analysis run.', err)
+    }
+  }
+
+  const plural = validRepos.length === 1 ? '' : 's'
+  console.log(`\n${bundle.name} (${validRepos.length} repo${plural})`)
+  console.log(renderLeaderboard(leaderboard))
+  console.log(renderSparklines(leaderboard))
+
+  const resultsDir = join(dirname(absoluteConfigPath), '.results')
+  mkdirSync(resultsDir, { recursive: true })
+  const resultPath = join(resultsDir, `${bundle.name}.json`)
+  const result = {
+    bundle: bundle.name,
+    repos: validRepos.map((r) => r.name),
+    window: timeWindow,
+    analyzed_at: new Date().toISOString(),
+    authors: leaderboard.map((s) => ({
+      name: s.author,
+      score: s.score,
+      commits: s.commits,
+      prs: s.prs,
+      loc_added: s.insertions,
+      loc_removed: s.deletions,
+      loc_net: s.net,
+      daily_scores: s.daily_scores,
+    })),
+  }
+  await Bun.write(resultPath, JSON.stringify(result, null, 2))
+  console.log(`\nResults written to ${resultPath}`)
+
+  if (jsonPath) {
+    const reportPath = resolve(jsonPath)
+    mkdirSync(dirname(reportPath), { recursive: true })
+    const report = {
+      repo: bundle.name,
+      generated_at: new Date().toISOString(),
+      window_days: daysInWindow,
+      authors: leaderboard.map((s) => ({
+        author: s.author,
+        commits: s.commits,
+        prs: s.prs,
+        insertions: s.insertions,
+        deletions: s.deletions,
+        net: s.net,
+        score: Number(s.score.toFixed(4)),
+      })),
+    }
+    await Bun.write(reportPath, JSON.stringify(report, null, 2))
+    console.log(`Report written to ${reportPath}`)
+  }
+
+  if (convexClient) await convexClient.close()
+}
+
+async function analyzeSingleRepo(
+  repo: BundleRepo,
+  bundle: BundleConfig,
+  since: Date,
+  convexClient: ConvexClient | null,
+  options?: { fetch?: boolean },
+): Promise<PerRepoScoredUnit[]> {
+  console.log(`\n[${repo.name}] analyzing ${repo.path}`)
 
   if (options?.fetch !== false) {
-    console.log('Fetching latest branches from all remotes...')
     try {
-      await fetchAllBranches(repoPath)
+      await fetchAllBranches(repo.path)
     } catch (err) {
       console.warn(
-        'Warning: git fetch failed, analyzing with local refs only. Coverage may be incomplete.',
+        `[${repo.name}] git fetch failed, using local refs only. Coverage may be incomplete.`,
       )
       console.warn(String(err))
     }
-  } else {
-    console.log('Skipping fetch (--no-fetch). Analyzing local refs only.')
+  }
+
+  let repoId: string | null = null
+  let authorIdMap = new Map<string, string>()
+  if (convexClient) {
+    try {
+      repoId = await ensureRepo(convexClient, repo.name)
+      authorIdMap = await ensureAuthors(
+        convexClient,
+        repoId,
+        bundle.engineers.map((username) => ({ username, whitelisted: true })),
+      )
+    } catch (err) {
+      console.warn(`Warning: Convex init for ${repo.name} failed.`, err)
+    }
   }
 
   const [logOutput, mergeShas] = await Promise.all([
-    getGitLog(repoPath, since),
-    getMergeCommits(repoPath, since),
+    getGitLog(repo.path, since),
+    getMergeCommits(repo.path, since),
   ])
-
   let commits = parseGitLog(logOutput)
-
   for (const commit of commits) {
     commit.isMerge = mergeShas.has(commit.sha)
   }
+  const engineerSet = new Set(bundle.engineers)
+  commits = commits.filter((c) => engineerSet.has(c.author))
+  if (commits.length === 0) return []
 
-  const authorSet = new Set(config.authors)
-  commits = commits.filter((c) => authorSet.has(c.author))
-
-  if (commits.length === 0) {
-    console.log('No commits found for whitelisted authors in this time window.')
-    return
-  }
-
-  // Extract work units
   const branchDayUnits = extractBranchDayUnits(commits, 'main')
   const prUnits = extractPrUnits(commits)
   const shellUnits = [...branchDayUnits, ...prUnits]
 
-  // Hydrate diffs
   const hydratedUnits: WorkUnit[] = await Promise.all(
     shellUnits.map(async (unit) => {
-      const diff = await getDiffForCommits(repoPath, unit.commit_shas)
+      const diff = await getDiffForCommits(repo.path, unit.commit_shas)
       return { ...unit, diff }
     }),
   )
 
-  // Classify work units
   const classificationMap = new Map<string, Classification>()
   const cachedIds = new Set<string>()
-
-  // Cache check — reuse classifications already stored in Convex
   let uncachedUnits = hydratedUnits
   if (convexClient && repoId) {
     for (const unit of hydratedUnits) {
@@ -162,25 +266,24 @@ export async function analyze(
       }
     }
     if (cachedIds.size > 0) {
-      console.log(`Skipping ${cachedIds.size} cached work unit(s).`)
+      console.log(
+        `[${repo.name}] Skipping ${cachedIds.size} cached work unit(s).`,
+      )
       uncachedUnits = hydratedUnits.filter((u) => !cachedIds.has(u.id))
     }
   }
 
-  if (config.server_url && uncachedUnits.length > 0) {
-    const repoUrl = config.repo_url ?? repoPath
+  if (bundle.server_url && uncachedUnits.length > 0) {
+    const repoUrl = repo.repo_url ?? repo.path
     const response = await classifyWorkUnits(
-      config.server_url,
+      bundle.server_url,
       repoUrl,
       uncachedUnits,
     )
     for (const item of response.classifications) {
       classificationMap.set(item.id, item.classification)
     }
-  } else if (!config.server_url) {
-    console.warn(
-      'Warning: No server_url configured. Using default classification (feature/medium/5).',
-    )
+  } else if (!bundle.server_url) {
     for (const unit of uncachedUnits) {
       classificationMap.set(unit.id, {
         type: 'feature',
@@ -191,26 +294,10 @@ export async function analyze(
     }
   }
 
-  // Parse days from time window
-  const daysMatch = timeWindow.match(/^-?(\d+)d$/)
-  const daysInWindow = daysMatch ? parseInt(daysMatch[1], 10) : 7
-
-  // Score each unit and aggregate per author
-  const authorUnitsMap = new Map<
-    string,
-    {
-      scoredUnits: { date: string; score: number }[]
-      commits: number
-      prs: number
-      insertions: number
-      deletions: number
-    }
-  >()
-
+  const scored: PerRepoScoredUnit[] = []
   for (const unit of hydratedUnits) {
     const classification = classificationMap.get(unit.id)
     if (!classification) continue
-
     const unitScore = calculateUnitScore({
       net_loc: unit.net,
       difficulty: classification.difficulty,
@@ -218,7 +305,6 @@ export async function analyze(
       impact_score: classification.impact_score,
     })
 
-    // Upload newly classified work units to Convex
     if (convexClient && repoId && !cachedIds.has(unit.id)) {
       const authorId = authorIdMap.get(unit.author)
       if (authorId) {
@@ -246,119 +332,17 @@ export async function analyze(
       }
     }
 
-    const existing = authorUnitsMap.get(unit.author) ?? {
-      scoredUnits: [],
-      commits: 0,
-      prs: 0,
-      insertions: 0,
-      deletions: 0,
-    }
-
-    existing.scoredUnits.push({ date: unit.date, score: unitScore })
-    existing.commits += unit.commit_shas.length
-    if (unit.kind === 'pr') existing.prs++
-    existing.insertions += unit.insertions
-    existing.deletions += unit.deletions
-
-    authorUnitsMap.set(unit.author, existing)
-  }
-
-  // Build leaderboard with daily scores
-  const leaderboard: AuthorStats[] = [...authorUnitsMap.entries()]
-    .map(([author, data]) => {
-      const allScores = data.scoredUnits.map((u) => u.score)
-      const daily_scores = computeDailyScores(
-        data.scoredUnits,
-        since,
-        daysInWindow,
-      )
-      return {
-        author,
-        commits: data.commits,
-        prs: data.prs,
-        insertions: data.insertions,
-        deletions: data.deletions,
-        net: data.insertions - data.deletions,
-        score: calculateAuthorScore(allScores, daysInWindow),
-        daily_scores,
-      }
+    scored.push({
+      author: unit.author,
+      repoName: repo.name,
+      date: unit.date,
+      score: unitScore,
+      commits: unit.commit_shas.length,
+      isPr: unit.kind === 'pr',
+      insertions: unit.insertions,
+      deletions: unit.deletions,
     })
-    .sort((a, b) => b.score - a.score)
-
-  // Upload analysis run to Convex
-  if (convexClient && repoId) {
-    try {
-      await insertAnalysisRun(convexClient, {
-        repoId,
-        timeWindow,
-        analyzedAt: new Date().toISOString(),
-        daysInWindow,
-        authorScores: leaderboard.map((s) => ({
-          authorId: authorIdMap.get(s.author) ?? '',
-          username: s.author,
-          commits: s.commits,
-          locAdded: s.insertions,
-          locRemoved: s.deletions,
-          locNet: s.net,
-          score: s.score,
-        })),
-      })
-    } catch (err) {
-      console.warn('Warning: Failed to upload analysis run.', err)
-    }
   }
 
-  console.log(renderLeaderboard(leaderboard))
-  console.log(renderSparklines(leaderboard))
-
-  // Write JSON result
-  const resultsDir = join(repoPath, '.auctor', 'results')
-  mkdirSync(resultsDir, { recursive: true })
-
-  const repoName = basename(repoPath)
-  const resultPath = join(resultsDir, `${repoName}.json`)
-
-  const result = {
-    repo: repoName,
-    window: timeWindow,
-    analyzed_at: new Date().toISOString(),
-    authors: leaderboard.map((s) => ({
-      name: s.author,
-      score: s.score,
-      commits: s.commits,
-      loc_added: s.insertions,
-      loc_removed: s.deletions,
-      loc_net: s.net,
-      daily_scores: s.daily_scores,
-    })),
-  }
-
-  await Bun.write(resultPath, JSON.stringify(result, null, 2))
-  console.log(`\nResults written to ${resultPath}`)
-
-  if (jsonPath) {
-    const reportPath = resolve(jsonPath)
-    const reportDir = join(reportPath, '..')
-    mkdirSync(reportDir, { recursive: true })
-
-    const report = {
-      repo: config.repo_url ?? repoName,
-      generated_at: new Date().toISOString(),
-      window_days: daysInWindow,
-      authors: leaderboard.map((s) => ({
-        author: s.author,
-        commits: s.commits,
-        prs: s.prs,
-        insertions: s.insertions,
-        deletions: s.deletions,
-        net: s.net,
-        score: Number(s.score.toFixed(4)),
-      })),
-    }
-
-    await Bun.write(reportPath, JSON.stringify(report, null, 2))
-    console.log(`Report written to ${reportPath}`)
-  }
-
-  if (convexClient) await convexClient.close()
+  return scored
 }
