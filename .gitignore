@@ -88,3 +88,6 @@ packages/*/dist
 tmp/
 
 .auctor.json
+
+# Auctor bundle run results (generated)
+configs/.results/
