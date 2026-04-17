@@ -37,7 +37,12 @@ classifyRoute.post('/classify', async (c) => {
     return c.json({ classifications: [] } satisfies ClassifyResponse, 200)
   }
 
-  const repoDir = await repoManager.ensureRepo(body.repo_url)
+  let repoDir = '/tmp'
+  try {
+    repoDir = await repoManager.ensureRepo(body.repo_url)
+  } catch {
+    // repo cloning is optional — classifier uses diffs from the payload
+  }
 
   const classifications: ClassifiedWorkUnit[] = []
 
