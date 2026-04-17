@@ -30,3 +30,17 @@ export interface AuthorStats {
   score: number
   daily_scores: DailyScore[]
 }
+
+export interface BundleRepo {
+  name: string
+  path: string
+  repo_url?: string
+}
+
+export interface BundleConfig {
+  name: string
+  server_url?: string
+  convex_url?: string
+  repos: BundleRepo[]
+  engineers: string[]
+}
