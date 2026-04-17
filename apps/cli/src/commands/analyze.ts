@@ -7,6 +7,7 @@ import {
   aggregateBundleResults,
   type PerRepoScoredUnit,
 } from '../analyze-aggregate'
+// biome-ignore lint/correctness/noUnusedImports: temporarily disabled server call, see analyzeSingleRepo
 import { classifyWorkUnits } from '../api-client'
 import { loadBundle } from '../bundle'
 import { getDiffForCommits } from '../git/diff'
@@ -148,26 +149,27 @@ async function analyzeSingleRepo(
   )
 
   const classificationMap = new Map<string, Classification>()
-  if (bundle.server_url && hydratedUnits.length > 0) {
-    const repoUrl = repo.repo_url ?? repo.path
-    const response = await classifyWorkUnits(
-      bundle.server_url,
-      repoUrl,
-      hydratedUnits,
-    )
-    for (const item of response.classifications) {
-      classificationMap.set(item.id, item.classification)
-    }
-  } else if (!bundle.server_url) {
-    for (const unit of hydratedUnits) {
-      classificationMap.set(unit.id, {
-        type: 'feature',
-        difficulty: 'medium',
-        impact_score: 5,
-        reasoning: 'default classification',
-      })
-    }
+  // Temporarily classify everything as medium/5; Fly.io server call disabled.
+  // if (bundle.server_url && hydratedUnits.length > 0) {
+  //   const repoUrl = repo.repo_url ?? repo.path
+  //   const response = await classifyWorkUnits(
+  //     bundle.server_url,
+  //     repoUrl,
+  //     hydratedUnits,
+  //   )
+  //   for (const item of response.classifications) {
+  //     classificationMap.set(item.id, item.classification)
+  //   }
+  // } else if (!bundle.server_url) {
+  for (const unit of hydratedUnits) {
+    classificationMap.set(unit.id, {
+      type: 'feature',
+      difficulty: 'medium',
+      impact_score: 5,
+      reasoning: 'default classification',
+    })
   }
+  // }
 
   const scored: PerRepoScoredUnit[] = []
   for (const unit of hydratedUnits) {
