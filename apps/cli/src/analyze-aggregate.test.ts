@@ -16,6 +16,12 @@ describe('aggregateBundleResults', () => {
         isPr: false,
         insertions: 40,
         deletions: 10,
+        considered: {
+          commits: [
+            { repo: 'main', sha: 'alice-main-1', message: 'feat: alice main' },
+          ],
+          prs: [],
+        },
       },
       {
         author: 'alice',
@@ -26,6 +32,17 @@ describe('aggregateBundleResults', () => {
         isPr: true,
         insertions: 20,
         deletions: 5,
+        considered: {
+          commits: [],
+          prs: [
+            {
+              repo: 'docs',
+              sha: 'alice-docs-merge',
+              pr_number: 42,
+              message: 'feat: docs (#42)',
+            },
+          ],
+        },
       },
       {
         author: 'bob',
@@ -36,6 +53,12 @@ describe('aggregateBundleResults', () => {
         isPr: false,
         insertions: 10,
         deletions: 0,
+        considered: {
+          commits: [
+            { repo: 'main', sha: 'bob-main-1', message: 'fix: bob main' },
+          ],
+          prs: [],
+        },
       },
     ]
 
@@ -52,6 +75,17 @@ describe('aggregateBundleResults', () => {
     expect(alice.net).toBe(45)
     expect(alice.score).toBeGreaterThan(0)
     expect(alice.daily_scores.length).toBe(7)
+    expect(alice.considered.commits).toEqual([
+      { repo: 'main', sha: 'alice-main-1', message: 'feat: alice main' },
+    ])
+    expect(alice.considered.prs).toEqual([
+      {
+        repo: 'docs',
+        sha: 'alice-docs-merge',
+        pr_number: 42,
+        message: 'feat: docs (#42)',
+      },
+    ])
 
     const bob = out.find((a) => a.author === 'bob')
     expect(bob).toBeDefined()
@@ -60,6 +94,10 @@ describe('aggregateBundleResults', () => {
     expect(bob.prs).toBe(0)
     expect(bob.insertions).toBe(10)
     expect(bob.deletions).toBe(0)
+    expect(bob.considered.commits).toEqual([
+      { repo: 'main', sha: 'bob-main-1', message: 'fix: bob main' },
+    ])
+    expect(bob.considered.prs).toEqual([])
 
     expect(out[0].score).toBeGreaterThanOrEqual(out[1].score)
   })

@@ -1,3 +1,4 @@
+import type { AuthorConsideredItems } from '@auctor/shared/report'
 import { calculateAuthorScore, computeDailyScores } from './scoring'
 import type { AuthorStats } from './types'
 
@@ -10,6 +11,7 @@ export interface PerRepoScoredUnit {
   isPr: boolean
   insertions: number
   deletions: number
+  considered: AuthorConsideredItems
 }
 
 interface AuthorBucket {
@@ -18,6 +20,7 @@ interface AuthorBucket {
   prs: number
   insertions: number
   deletions: number
+  considered: AuthorConsideredItems
 }
 
 export function aggregateBundleResults(
@@ -34,12 +37,15 @@ export function aggregateBundleResults(
       prs: 0,
       insertions: 0,
       deletions: 0,
+      considered: { commits: [], prs: [] },
     }
     b.scoredUnits.push({ date: u.date, score: u.score })
     b.commits += u.commits
     if (u.isPr) b.prs += 1
     b.insertions += u.insertions
     b.deletions += u.deletions
+    b.considered.commits.push(...u.considered.commits)
+    b.considered.prs.push(...u.considered.prs)
     buckets.set(u.author, b)
   }
 
@@ -56,6 +62,7 @@ export function aggregateBundleResults(
         daysInWindow,
       ),
       daily_scores: computeDailyScores(b.scoredUnits, since, daysInWindow),
+      considered: b.considered,
     }))
     .sort((a, b) => b.score - a.score)
 }

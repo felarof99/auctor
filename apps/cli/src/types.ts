@@ -1,3 +1,5 @@
+import type { AuthorConsideredItems } from '@auctor/shared/report'
+
 export interface Commit {
   sha: string
   author: string
@@ -23,6 +25,7 @@ export interface AuthorStats {
   net: number
   score: number
   daily_scores: DailyScore[]
+  considered: AuthorConsideredItems
 }
 
 export interface BundleRepo {

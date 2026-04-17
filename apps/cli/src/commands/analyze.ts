@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { aggregateBundle } from '@auctor/shared/aggregate'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
-import type { RepoReport } from '@auctor/shared/report'
+import type { AuthorConsideredItems, RepoReport } from '@auctor/shared/report'
 import {
   aggregateBundleResults,
   type PerRepoScoredUnit,
@@ -177,8 +177,44 @@ async function analyzeSingleRepo(
       isPr: unit.kind === 'pr',
       insertions: unit.insertions,
       deletions: unit.deletions,
+      considered: buildConsideredItemsForUnit(repo.name, unit),
     })
   }
 
   return scored
+}
+
+export function buildConsideredItemsForUnit(
+  repoName: string,
+  unit: WorkUnit,
+): AuthorConsideredItems {
+  if (unit.kind === 'pr') {
+    const message = unit.commit_messages[0] ?? ''
+    const prNumber = extractPrNumber(message)
+    return {
+      commits: [],
+      prs: [
+        {
+          repo: repoName,
+          sha: unit.commit_shas[0] ?? '',
+          ...(prNumber !== undefined ? { pr_number: prNumber } : {}),
+          message,
+        },
+      ],
+    }
+  }
+
+  return {
+    commits: unit.commit_shas.map((sha, i) => ({
+      repo: repoName,
+      sha,
+      message: unit.commit_messages[i] ?? '',
+    })),
+    prs: [],
+  }
+}
+
+function extractPrNumber(message: string): number | undefined {
+  const match = message.match(/\(#(\d+)\)\s*$/)
+  return match ? Number.parseInt(match[1], 10) : undefined
 }
