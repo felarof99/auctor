@@ -10,11 +10,12 @@ const program = new Command()
 
 program
   .command('configure')
-  .description('Configure author whitelist from git history')
-  .argument('<time-window>', 'Time window (e.g., -7d, -30d, 0d)')
-  .option('--path <path>', 'Path to git repository', '.')
-  .action(async (timeWindow: string, opts: { path: string }) => {
-    await configure(timeWindow, opts.path)
+  .description('Add a repo to a bundle and refresh its engineer list')
+  .argument('<config>', 'Path to bundle YAML file')
+  .argument('<repo>', 'Path to git repository to add')
+  .argument('<time-window>', 'Time window for author scan (e.g., -7d, -30d)')
+  .action(async (configPath: string, repoPath: string, timeWindow: string) => {
+    await configure(configPath, repoPath, timeWindow)
   })
 
 program

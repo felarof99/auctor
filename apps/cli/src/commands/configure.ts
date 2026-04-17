@@ -1,69 +1,82 @@
-import { existsSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { basename, dirname, resolve } from 'node:path'
 import * as clack from '@clack/prompts'
+import {
+  addRepo,
+  findRepoByPath,
+  loadBundle,
+  mergeEngineers,
+  saveBundle,
+} from '../bundle'
 import { createConvexClient, ensureAuthors, ensureRepo } from '../convex-client'
 import { getUniqueAuthors } from '../git/authors'
 import { parseTimeWindow } from '../git/log'
-import type { Config } from '../types'
+import type { BundleConfig } from '../types'
 
 export async function configure(
+  configPath: string,
+  repoPath: string,
   timeWindow: string,
-  path: string,
 ): Promise<void> {
-  const repoPath = resolve(path)
-  const gitDir = join(repoPath, '.git')
+  const absoluteConfigPath = resolve(configPath)
+  const absoluteRepoPath = resolve(repoPath)
 
-  if (!existsSync(gitDir)) {
-    console.error(`Not a git repository: ${repoPath}`)
+  if (!existsSync(`${absoluteRepoPath}/.git`)) {
+    console.error(`Not a git repository: ${absoluteRepoPath}`)
     process.exit(1)
   }
-
-  const since = parseTimeWindow(timeWindow)
-  const authorInfos = await getUniqueAuthors(repoPath, since)
-
-  if (authorInfos.length === 0) {
-    console.error(`No authors found in the last ${timeWindow}`)
-    process.exit(1)
-  }
-
-  const configPath = join(repoPath, '.auctor.json')
-  let existingConfig: Partial<Config> = {}
-  if (existsSync(configPath)) {
-    existingConfig = JSON.parse(await Bun.file(configPath).text())
-  }
-  const existingAuthors = existingConfig.authors ?? []
 
   clack.intro('auctor configure')
 
-  const selected = await clack.multiselect({
-    message: 'Select authors to track (GitHub usernames):',
-    options: authorInfos.map((a) => ({
-      value: a.username,
-      label: a.username === a.name ? a.username : `${a.username} (${a.name})`,
-    })),
-    initialValues: existingAuthors.filter((a) =>
-      authorInfos.some((info) => info.username === a),
-    ),
-  })
+  const bundle = await getOrInitBundle(absoluteConfigPath)
 
-  if (clack.isCancel(selected)) {
-    clack.cancel('Configuration cancelled.')
-    process.exit(0)
+  const since = parseTimeWindow(timeWindow)
+  const authorInfos = await getUniqueAuthors(absoluteRepoPath, since)
+
+  let selected: string[] = []
+  if (authorInfos.length === 0) {
+    clack.log.warn(
+      `No authors found in ${timeWindow} window; skipping engineer prompt.`,
+    )
+  } else {
+    const picked = await clack.multiselect({
+      message: 'Select engineers to track (GitHub usernames):',
+      options: authorInfos.map((a) => ({
+        value: a.username,
+        label: a.username === a.name ? a.username : `${a.username} (${a.name})`,
+      })),
+      initialValues: authorInfos
+        .map((a) => a.username)
+        .filter((u) => bundle.engineers.includes(u)),
+      required: false,
+    })
+    if (clack.isCancel(picked)) {
+      clack.cancel('Configuration cancelled.')
+      process.exit(0)
+    }
+    selected = picked as string[]
   }
 
-  const config: Config = { ...existingConfig, authors: selected as string[] }
-  await Bun.write(configPath, JSON.stringify(config, null, 2))
+  const repoEntry = findRepoByPath(bundle, absoluteRepoPath) ?? {
+    name: basename(absoluteRepoPath),
+    path: absoluteRepoPath,
+  }
+  const withRepo = addRepo(bundle, repoEntry)
+  const withEngineers = mergeEngineers(withRepo, selected)
 
-  if (config.convex_url) {
+  await saveBundle(absoluteConfigPath, withEngineers)
+
+  if (withEngineers.convex_url) {
     try {
-      const client = createConvexClient(config.convex_url)
-      const repoName = config.repo_url ?? basename(repoPath)
-      const repoId = await ensureRepo(client, repoName)
-      await ensureAuthors(
-        client,
-        repoId,
-        config.authors.map((a) => ({ username: a, whitelisted: true })),
-      )
+      const client = createConvexClient(withEngineers.convex_url)
+      const bundleRepoId = await ensureRepo(client, withEngineers.name)
+      const perRepoId = await ensureRepo(client, repoEntry.name)
+      const engineersPayload = withEngineers.engineers.map((username) => ({
+        username,
+        whitelisted: true,
+      }))
+      await ensureAuthors(client, bundleRepoId, engineersPayload)
+      await ensureAuthors(client, perRepoId, engineersPayload)
       clack.log.success('Synced to Convex')
       await client.close()
     } catch (err) {
@@ -73,5 +86,53 @@ export async function configure(
     }
   }
 
-  clack.outro(`Saved ${config.authors.length} authors to .auctor.json`)
+  clack.outro(
+    `Saved bundle ${withEngineers.name}: ${withEngineers.repos.length} repo(s), ${withEngineers.engineers.length} engineer(s)`,
+  )
+}
+
+async function getOrInitBundle(configPath: string): Promise<BundleConfig> {
+  if (existsSync(configPath)) {
+    return loadBundle(configPath)
+  }
+  clack.log.info(`Creating new bundle at ${configPath}`)
+  const defaultName = basename(configPath).replace(/\.ya?ml$/, '')
+  const nameRes = await clack.text({
+    message: 'Bundle name:',
+    initialValue: defaultName,
+    validate: (v) => (v.trim() ? undefined : 'Name is required'),
+  })
+  if (clack.isCancel(nameRes)) {
+    clack.cancel('Configuration cancelled.')
+    process.exit(0)
+  }
+  const serverRes = await clack.text({
+    message: 'Server URL (blank to skip):',
+    placeholder: 'https://auctor-server.fly.dev',
+    defaultValue: '',
+  })
+  if (clack.isCancel(serverRes)) {
+    clack.cancel('Configuration cancelled.')
+    process.exit(0)
+  }
+  const convexRes = await clack.text({
+    message: 'Convex URL (blank to skip):',
+    placeholder: 'https://<deployment>.convex.cloud',
+    defaultValue: '',
+  })
+  if (clack.isCancel(convexRes)) {
+    clack.cancel('Configuration cancelled.')
+    process.exit(0)
+  }
+  mkdirSync(dirname(configPath), { recursive: true })
+  const name = (nameRes as string).trim()
+  const serverUrl = (serverRes as string).trim()
+  const convexUrl = (convexRes as string).trim()
+  return {
+    name,
+    ...(serverUrl ? { server_url: serverUrl } : {}),
+    ...(convexUrl ? { convex_url: convexUrl } : {}),
+    repos: [],
+    engineers: [],
+  }
 }
