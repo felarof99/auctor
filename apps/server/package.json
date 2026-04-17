@@ -13,7 +13,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.750.0",
     "@auctor/shared": "workspace:*",
     "better-sqlite3": "^11.0.0",
-    "hono": "^4.7.0",
+    "hono": "^4.12.14",
     "zod": "^3.24.0"
   },
   "devDependencies": {
