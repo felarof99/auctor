@@ -23,8 +23,17 @@ program
   .argument('<time-window>', 'Time window (e.g., -7d, -30d, 0d)')
   .option('--path <path>', 'Path to git repository', '.')
   .option('--json <file>', 'Write RepoReport JSON to file')
-  .action(async (timeWindow: string, opts: { path: string; json?: string }) => {
-    await analyze(timeWindow, opts.path, opts.json)
-  })
+  .option(
+    '--no-fetch',
+    'Skip git fetch before analyzing (faster, but may miss branches)',
+  )
+  .action(
+    async (
+      timeWindow: string,
+      opts: { path: string; json?: string; fetch: boolean },
+    ) => {
+      await analyze(timeWindow, opts.path, opts.json, { fetch: opts.fetch })
+    },
+  )
 
 program.parse()
