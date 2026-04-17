@@ -8,7 +8,6 @@ import {
   mergeEngineers,
   saveBundle,
 } from '../bundle'
-import { createConvexClient, ensureAuthors, ensureRepo } from '../convex-client'
 import { getUniqueAuthors } from '../git/authors'
 import { parseTimeWindow } from '../git/log'
 import type { BundleConfig } from '../types'
@@ -66,26 +65,6 @@ export async function configure(
 
   await saveBundle(absoluteConfigPath, withEngineers)
 
-  if (withEngineers.convex_url) {
-    try {
-      const client = createConvexClient(withEngineers.convex_url)
-      const bundleRepoId = await ensureRepo(client, withEngineers.name)
-      const perRepoId = await ensureRepo(client, repoEntry.name)
-      const engineersPayload = withEngineers.engineers.map((username) => ({
-        username,
-        whitelisted: true,
-      }))
-      await ensureAuthors(client, bundleRepoId, engineersPayload)
-      await ensureAuthors(client, perRepoId, engineersPayload)
-      clack.log.success('Synced to Convex')
-      await client.close()
-    } catch (err) {
-      clack.log.warn(
-        `Failed to sync to Convex: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    }
-  }
-
   clack.outro(
     `Saved bundle ${withEngineers.name}: ${withEngineers.repos.length} repo(s), ${withEngineers.engineers.length} engineer(s)`,
   )
@@ -96,7 +75,7 @@ async function getOrInitBundle(configPath: string): Promise<BundleConfig> {
     return loadBundle(configPath)
   }
   clack.log.info(`Creating new bundle at ${configPath}`)
-  const defaultName = basename(configPath).replace(/\.ya?ml$/, '')
+  const defaultName = basename(configPath).replace(/(_config)?\.ya?ml$/, '')
   const nameRes = await clack.text({
     message: 'Bundle name:',
     initialValue: defaultName,
@@ -115,23 +94,12 @@ async function getOrInitBundle(configPath: string): Promise<BundleConfig> {
     clack.cancel('Configuration cancelled.')
     process.exit(0)
   }
-  const convexRes = await clack.text({
-    message: 'Convex URL (blank to skip):',
-    placeholder: 'https://<deployment>.convex.cloud',
-    defaultValue: '',
-  })
-  if (clack.isCancel(convexRes)) {
-    clack.cancel('Configuration cancelled.')
-    process.exit(0)
-  }
   mkdirSync(dirname(configPath), { recursive: true })
   const name = (nameRes as string).trim()
   const serverUrl = (serverRes as string).trim()
-  const convexUrl = (convexRes as string).trim()
   return {
     name,
     ...(serverUrl ? { server_url: serverUrl } : {}),
-    ...(convexUrl ? { convex_url: convexUrl } : {}),
     repos: [],
     engineers: [],
   }
