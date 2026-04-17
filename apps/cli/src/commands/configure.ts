@@ -42,7 +42,7 @@ export async function configure(
       message: 'Select engineers to track (GitHub usernames):',
       options: authorInfos.map((a) => ({
         value: a.username,
-        label: a.username === a.name ? a.username : `${a.username} (${a.name})`,
+        label: a.username,
       })),
       initialValues: authorInfos
         .map((a) => a.username)
