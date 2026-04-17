@@ -3,6 +3,24 @@ export interface DailyScore {
   score: number
 }
 
+export interface ConsideredCommit {
+  repo: string
+  sha: string
+  message: string
+}
+
+export interface ConsideredPullRequest {
+  repo: string
+  sha: string
+  pr_number?: number
+  message: string
+}
+
+export interface AuthorConsideredItems {
+  commits: ConsideredCommit[]
+  prs: ConsideredPullRequest[]
+}
+
 export interface RepoAuthorStats {
   author: string
   commits: number
@@ -12,6 +30,7 @@ export interface RepoAuthorStats {
   net: number
   score: number
   daily_scores: DailyScore[]
+  considered: AuthorConsideredItems
 }
 
 export interface RepoReport {

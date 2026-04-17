@@ -8,6 +8,29 @@ const DAILY = [
   { date: '2024-01-03', score: 0.5 },
 ]
 
+function considered(
+  repo: string,
+  author: string,
+): RepoReport['authors'][number]['considered'] {
+  return {
+    commits: [
+      {
+        repo,
+        sha: `${author}-${repo}-commit`,
+        message: `${author} commit in ${repo}`,
+      },
+    ],
+    prs: [
+      {
+        repo,
+        sha: `${author}-${repo}-merge`,
+        pr_number: repo === 'repo1' ? 101 : 202,
+        message: `${author} PR in ${repo}`,
+      },
+    ],
+  }
+}
+
 function makeReport(
   repo: string,
   authors: RepoReport['authors'],
@@ -36,6 +59,7 @@ describe('aggregateBundle', () => {
         net: 80,
         score: 8.5,
         daily_scores: DAILY,
+        considered: considered('repo1', 'alice'),
       },
       {
         author: 'bob',
@@ -46,6 +70,7 @@ describe('aggregateBundle', () => {
         net: 40,
         score: 4.2,
         daily_scores: DAILY,
+        considered: considered('repo1', 'bob'),
       },
     ])
 
@@ -64,9 +89,12 @@ describe('aggregateBundle', () => {
     expect(alice?.net).toBe(80)
     expect(alice?.score).toBe(8.5)
     expect(alice?.repos).toEqual(['repo1'])
+    expect(alice?.considered.commits.map((c) => c.repo)).toEqual(['repo1'])
+    expect(alice?.considered.prs.map((p) => p.pr_number)).toEqual([101])
 
     expect(bob).toBeDefined()
     expect(bob?.repos).toEqual(['repo1'])
+    expect(bob?.considered.commits.map((c) => c.repo)).toEqual(['repo1'])
 
     // sorted by score desc: alice first
     expect(result.authors[0].author).toBe('alice')
@@ -93,6 +121,7 @@ describe('aggregateBundle', () => {
         net: 80,
         score: 5.0,
         daily_scores: daily1,
+        considered: considered('repo1', 'alice'),
       },
       {
         author: 'bob',
@@ -103,6 +132,7 @@ describe('aggregateBundle', () => {
         net: 25,
         score: 1.5,
         daily_scores: daily1,
+        considered: considered('repo1', 'bob'),
       },
     ])
 
@@ -116,6 +146,7 @@ describe('aggregateBundle', () => {
         net: 50,
         score: 3.0,
         daily_scores: daily2,
+        considered: considered('repo2', 'alice'),
       },
     ])
 
@@ -140,6 +171,12 @@ describe('aggregateBundle', () => {
 
     expect(alice?.repos).toEqual(['repo1', 'repo2'])
     expect(bob?.repos).toEqual(['repo1'])
+    expect(alice?.considered.commits.map((c) => c.repo)).toEqual([
+      'repo1',
+      'repo2',
+    ])
+    expect(alice?.considered.prs.map((p) => p.pr_number)).toEqual([101, 202])
+    expect(bob?.considered.commits.map((c) => c.repo)).toEqual(['repo1'])
 
     // sorted by score desc: alice (8.0) before bob (1.5)
     expect(result.authors[0].author).toBe('alice')
@@ -189,6 +226,7 @@ describe('aggregateBundle', () => {
         net: 8,
         score: 1.0,
         daily_scores: [{ date: '2024-01-01', score: 1.0 }],
+        considered: considered('repo1', 'alice'),
       },
     ])
     const r2 = makeReport('repo2', [
@@ -204,6 +242,7 @@ describe('aggregateBundle', () => {
           { date: '2024-01-01', score: 1.0 },
           { date: '2024-01-02', score: 0.5 },
         ],
+        considered: considered('repo2', 'alice'),
       },
     ])
     expect(() => aggregateBundle([r1, r2])).toThrow(/length/i)
@@ -220,6 +259,7 @@ describe('aggregateBundle', () => {
         net: 8,
         score: 1.0,
         daily_scores: [{ date: '2024-01-01', score: 1.0 }],
+        considered: considered('repo1', 'alice'),
       },
     ])
     const r2 = makeReport('repo2', [
@@ -232,6 +272,7 @@ describe('aggregateBundle', () => {
         net: 8,
         score: 1.0,
         daily_scores: [{ date: '2024-01-02', score: 1.0 }],
+        considered: considered('repo2', 'alice'),
       },
     ])
     expect(() => aggregateBundle([r1, r2])).toThrow(/date/i)

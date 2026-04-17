@@ -1,4 +1,9 @@
-import type { DailyScore, RepoAuthorStats, RepoReport } from './report'
+import type {
+  AuthorConsideredItems,
+  DailyScore,
+  RepoAuthorStats,
+  RepoReport,
+} from './report'
 
 export interface BundleAuthorStats extends RepoAuthorStats {
   repos: string[]
@@ -53,6 +58,7 @@ export function aggregateBundle(reports: RepoReport[]): BundleAggregate {
           net: a.net,
           score: a.score,
           daily_scores: a.daily_scores.map((d) => ({ ...d })),
+          considered: cloneConsidered(a.considered),
           repos: [report.repo],
         })
         continue
@@ -67,6 +73,8 @@ export function aggregateBundle(reports: RepoReport[]): BundleAggregate {
         existing.daily_scores,
         a.daily_scores,
       )
+      existing.considered.commits.push(...a.considered.commits)
+      existing.considered.prs.push(...a.considered.prs)
       if (!existing.repos.includes(report.repo)) {
         existing.repos.push(report.repo)
       }
@@ -80,6 +88,15 @@ export function aggregateBundle(reports: RepoReport[]): BundleAggregate {
     window_days: windowDays,
     generated_at: generatedAt,
     authors,
+  }
+}
+
+function cloneConsidered(
+  considered: AuthorConsideredItems,
+): AuthorConsideredItems {
+  return {
+    commits: considered.commits.map((c) => ({ ...c })),
+    prs: considered.prs.map((p) => ({ ...p })),
   }
 }
 
