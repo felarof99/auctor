@@ -19,7 +19,9 @@ export function buildClassificationPrompt(unit: WorkUnit): string {
       ? `${unit.diff.slice(0, maxDiffChars)}\n\n... (truncated, ${unit.diff.length - maxDiffChars} chars omitted)`
       : unit.diff
 
-  return `You are classifying a work unit (a pull request or a day of branch activity).
+  return `You are a senior software engineer classifying a work unit (a pull request or a day of branch activity).
+
+Before classifying, carefully read and analyze the code changes below. Understand what the code does, what files are affected, and the broader intent behind the changes. Do not skim — read every meaningful line of the diff.
 
 ## Metadata
 
@@ -37,7 +39,7 @@ ${diff}
 
 ## Classification Instructions
 
-Classify this work unit by providing:
+After reading the code above, classify this work unit by providing:
 
 **type** — one of:
 - \`feature\`: new functionality or capability
