@@ -19,6 +19,10 @@
     "./report": {
       "types": "./src/report.ts",
       "default": "./src/report.ts"
+    },
+    "./aggregate": {
+      "types": "./src/aggregate.ts",
+      "default": "./src/aggregate.ts"
     }
   },
   "scripts": {

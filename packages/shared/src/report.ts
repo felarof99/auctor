@@ -1,3 +1,8 @@
+export interface DailyScore {
+  date: string
+  score: number
+}
+
 export interface RepoAuthorStats {
   author: string
   commits: number
@@ -6,11 +11,14 @@ export interface RepoAuthorStats {
   deletions: number
   net: number
   score: number
+  daily_scores: DailyScore[]
 }
 
 export interface RepoReport {
+  bundle: string
   repo: string
-  generated_at: string
+  window: string
   window_days: number
+  generated_at: string
   authors: RepoAuthorStats[]
 }
