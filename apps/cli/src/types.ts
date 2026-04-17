@@ -4,6 +4,7 @@ export interface Commit {
   sha: string
   author: string
   authorEmail?: string
+  branch?: string
   date: Date
   subject: string
   insertions: number

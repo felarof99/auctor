@@ -1,5 +1,22 @@
-import { describe, expect, test } from 'bun:test'
-import { parseGitLog, parseTimeWindow } from './log'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  getActiveBranches,
+  normalizeBranchName,
+  parseGitLog,
+  parseTimeWindow,
+} from './log'
+
+async function run(args: string[], cwd: string): Promise<void> {
+  const proc = Bun.spawn(args, { cwd, stdout: 'pipe', stderr: 'pipe' })
+  const stderr = await new Response(proc.stderr).text()
+  const exitCode = await proc.exited
+  if (exitCode !== 0) {
+    throw new Error(`${args.join(' ')} failed: ${stderr}`)
+  }
+}
 
 describe('parseTimeWindow', () => {
   test('parses -7d as 7 days ago', () => {
@@ -41,6 +58,21 @@ describe('parseTimeWindow', () => {
 })
 
 describe('parseGitLog', () => {
+  test('attaches branch when parsing branch-scoped log output', () => {
+    const output = `COMMIT_START
+abc123def
+Alice
+alice@example.com
+2026-04-10T14:30:00-07:00
+feat: add user auth
+
+ 3 files changed, 45 insertions(+), 12 deletions(-)`
+
+    const commits = parseGitLog(output, 'dev')
+    expect(commits).toHaveLength(1)
+    expect(commits[0].branch).toBe('dev')
+  })
+
   test('parses a single commit with stats', () => {
     const output = `COMMIT_START
 abc123def
@@ -132,5 +164,56 @@ feat: new file
   test('returns empty array for empty output', () => {
     expect(parseGitLog('')).toEqual([])
     expect(parseGitLog('  \n  ')).toEqual([])
+  })
+})
+
+describe('normalizeBranchName', () => {
+  test('normalizes origin remote branches to human branch names', () => {
+    expect(normalizeBranchName('refs/remotes/origin/dev')).toBe('dev')
+    expect(normalizeBranchName('origin/feat/thing')).toBe('feat/thing')
+    expect(normalizeBranchName('refs/heads/release')).toBe('release')
+  })
+
+  test('keeps non-origin remote names to avoid ambiguity', () => {
+    expect(normalizeBranchName('refs/remotes/upstream/dev')).toBe(
+      'upstream/dev',
+    )
+  })
+})
+
+describe('getActiveBranches', () => {
+  let tempRoot: string | null = null
+
+  afterEach(() => {
+    if (tempRoot) {
+      rmSync(tempRoot, { recursive: true, force: true })
+      tempRoot = null
+    }
+  })
+
+  test('returns fetched remote-tracking branches with commits in the window', async () => {
+    tempRoot = mkdtempSync(join(tmpdir(), 'auctor-branches-test-'))
+    const repo = join(tempRoot, 'repo')
+    await run(['git', 'init', '-b', 'main', repo], tempRoot)
+    await run(['git', 'config', 'user.email', 'alice@example.com'], repo)
+    await run(['git', 'config', 'user.name', 'Alice'], repo)
+    writeFileSync(join(repo, 'README.md'), 'main\n')
+    await run(['git', 'add', '.'], repo)
+    await run(['git', 'commit', '-m', 'initial'], repo)
+    await run(['git', 'checkout', '-b', 'dev'], repo)
+    writeFileSync(join(repo, 'dev.txt'), 'dev\n')
+    await run(['git', 'add', '.'], repo)
+    await run(['git', 'commit', '-m', 'dev work'], repo)
+    await run(['git', 'update-ref', 'refs/remotes/origin/dev', 'HEAD'], repo)
+
+    const branches = await getActiveBranches(
+      repo,
+      new Date(Date.now() - 86_400_000),
+    )
+
+    expect(branches).toContainEqual({
+      ref: 'refs/remotes/origin/dev',
+      name: 'dev',
+    })
   })
 })

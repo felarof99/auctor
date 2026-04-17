@@ -12,15 +12,16 @@ import { resolveCommitsToGithubAuthors } from '../git/authors'
 import { getDiffForCommits } from '../git/diff'
 import { fetchAllBranches } from '../git/fetch'
 import {
-  getGitLog,
-  getMergeCommits,
+  getActiveBranches,
+  getGitLogForBranch,
+  getMergeCommitsForBranch,
   parseGitLog,
   parseTimeWindow,
 } from '../git/log'
 import { extractBranchDayUnits, extractPrUnits } from '../git/work-units'
 import { renderLeaderboard, renderSparklines } from '../output'
 import { calculateUnitScore } from '../scoring'
-import type { BundleConfig, BundleRepo } from '../types'
+import type { BundleConfig, BundleRepo, Commit } from '../types'
 
 export async function analyze(
   configPath: string,
@@ -124,20 +125,25 @@ async function analyzeSingleRepo(
     }
   }
 
-  const [logOutput, mergeShas] = await Promise.all([
-    getGitLog(repo.path, since),
-    getMergeCommits(repo.path, since),
-  ])
-  let commits = parseGitLog(logOutput)
-  for (const commit of commits) {
-    commit.isMerge = mergeShas.has(commit.sha)
+  const activeBranches = await getActiveBranches(repo.path, since)
+  let commits: Commit[] = []
+  for (const branch of activeBranches) {
+    const [logOutput, mergeShas] = await Promise.all([
+      getGitLogForBranch(repo.path, branch, since),
+      getMergeCommitsForBranch(repo.path, branch, since),
+    ])
+    const branchCommits = parseGitLog(logOutput, branch.name)
+    for (const commit of branchCommits) {
+      commit.isMerge = mergeShas.has(commit.sha)
+    }
+    commits.push(...branchCommits)
   }
   commits = await resolveCommitsToGithubAuthors(repo.path, commits)
   const engineerSet = new Set(bundle.engineers)
   commits = commits.filter((commit) => engineerSet.has(commit.author))
   if (commits.length === 0) return []
 
-  const branchDayUnits = extractBranchDayUnits(commits, 'main')
+  const branchDayUnits = extractBranchDayUnits(commits)
   const prUnits = extractPrUnits(commits)
   const shellUnits = [...branchDayUnits, ...prUnits]
 
