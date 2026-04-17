@@ -14,6 +14,7 @@ describe('renderLeaderboard', () => {
         net: 860,
         score: 0.82,
         daily_scores: [],
+        considered: { commits: [], prs: [] },
       },
       {
         author: 'bob',
@@ -24,6 +25,7 @@ describe('renderLeaderboard', () => {
         net: 530,
         score: 0.61,
         daily_scores: [],
+        considered: { commits: [], prs: [] },
       },
     ]
 
@@ -56,6 +58,7 @@ describe('renderLeaderboard', () => {
         net: 10,
         score: 0.5,
         daily_scores: [],
+        considered: { commits: [], prs: [] },
       },
       {
         author: 'b',
@@ -66,6 +69,7 @@ describe('renderLeaderboard', () => {
         net: 5,
         score: 0.3,
         daily_scores: [],
+        considered: { commits: [], prs: [] },
       },
     ]
     const output = renderLeaderboard(stats)
