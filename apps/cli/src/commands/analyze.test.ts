@@ -84,4 +84,17 @@ describe('buildConsideredItemsForUnit', () => {
       ],
     })
   })
+
+  test('parses GitHub merge commit PR numbers', () => {
+    const considered = buildConsideredItemsForUnit(
+      'browseros-main',
+      makeUnit({
+        kind: 'pr',
+        commit_shas: ['eee5555'],
+        commit_messages: ['chore: merge pull request #690 (feat/acls)'],
+      }),
+    )
+
+    expect(considered.prs[0].pr_number).toBe(690)
+  })
 })

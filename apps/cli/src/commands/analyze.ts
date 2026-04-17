@@ -215,6 +215,7 @@ export function buildConsideredItemsForUnit(
 }
 
 function extractPrNumber(message: string): number | undefined {
-  const match = message.match(/\(#(\d+)\)\s*$/)
+  const match =
+    message.match(/\(#(\d+)\)\s*$/) ?? message.match(/pull request #(\d+)/i)
   return match ? Number.parseInt(match[1], 10) : undefined
 }
