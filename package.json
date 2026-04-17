@@ -14,7 +14,7 @@
     "lint:fix": "bunx biome check --write --unsafe",
     "clean": "rimraf dist",
     "dashboard:sync": "bun apps/dashboard/scripts/sync-data.ts",
-    "dashboard:dev": "bun run dashboard:sync && bun --cwd apps/dashboard run dev"
+    "dashboard:dev": "bun run dashboard:sync && bun run --cwd apps/dashboard dev"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.11",
