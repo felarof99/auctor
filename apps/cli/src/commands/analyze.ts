@@ -112,16 +112,19 @@ export async function analyze(
     }),
   )
 
-  // Cache check — skip units already stored in Convex
+  // Classify work units
+  const classificationMap = new Map<string, Classification>()
+  const cachedIds = new Set<string>()
+
+  // Cache check — reuse classifications already stored in Convex
   let uncachedUnits = hydratedUnits
   if (convexClient && repoId) {
-    const cachedIds = new Set<string>()
     for (const unit of hydratedUnits) {
       const authorId = authorIdMap.get(unit.author)
       if (!authorId) continue
       try {
         const unitType = unit.kind === 'branch-day' ? 'branch_day' : unit.kind
-        const exists = await findExistingWorkUnit(
+        const cached = await findExistingWorkUnit(
           convexClient,
           repoId,
           authorId,
@@ -129,7 +132,15 @@ export async function analyze(
           unitType as 'pr' | 'branch_day',
           unit.branch,
         )
-        if (exists) cachedIds.add(unit.id)
+        if (cached) {
+          cachedIds.add(unit.id)
+          classificationMap.set(unit.id, {
+            type: cached.classificationType,
+            difficulty: cached.difficultyLevel,
+            impact_score: cached.impactScore,
+            reasoning: cached.reasoning,
+          })
+        }
       } catch {
         // skip cache check on error
       }
@@ -139,9 +150,6 @@ export async function analyze(
       uncachedUnits = hydratedUnits.filter((u) => !cachedIds.has(u.id))
     }
   }
-
-  // Classify work units
-  const classificationMap = new Map<string, Classification>()
 
   if (config.server_url && uncachedUnits.length > 0) {
     const repoUrl = config.repo_url ?? repoPath
@@ -195,7 +203,7 @@ export async function analyze(
     })
 
     // Upload newly classified work units to Convex
-    if (convexClient && repoId) {
+    if (convexClient && repoId && !cachedIds.has(unit.id)) {
       const authorId = authorIdMap.get(unit.author)
       if (authorId) {
         try {

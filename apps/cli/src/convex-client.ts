@@ -34,6 +34,14 @@ export async function ensureAuthors(
   return map
 }
 
+export interface CachedWorkUnit {
+  classificationType: Classification['type']
+  difficultyLevel: Classification['difficulty']
+  impactScore: number
+  reasoning: string
+  unitScore: number
+}
+
 export async function findExistingWorkUnit(
   client: ConvexClient,
   repoId: Id<'repos'>,
@@ -41,8 +49,8 @@ export async function findExistingWorkUnit(
   date: string,
   unitType: 'pr' | 'branch_day',
   branch: string,
-): Promise<boolean> {
-  return await client.query('work_units:exists' as Api, {
+): Promise<CachedWorkUnit | null> {
+  return await client.query('work_units:find' as Api, {
     repoId,
     authorId,
     date,

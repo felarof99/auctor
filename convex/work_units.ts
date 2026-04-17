@@ -62,6 +62,32 @@ export const exists = query({
   },
 })
 
+export const find = query({
+  args: {
+    repoId: v.id('repos'),
+    authorId: v.id('authors'),
+    date: v.string(),
+    unitType: v.union(v.literal('pr'), v.literal('branch_day')),
+    branch: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const candidates = await ctx.db
+      .query('work_units')
+      .withIndex('by_author', (q) =>
+        q.eq('repoId', args.repoId).eq('authorId', args.authorId),
+      )
+      .collect()
+    return (
+      candidates.find(
+        (wu) =>
+          wu.date === args.date &&
+          wu.unitType === args.unitType &&
+          wu.branch === args.branch,
+      ) ?? null
+    )
+  },
+})
+
 export const getByRepoAndDateRange = query({
   args: {
     repoId: v.id('repos'),
