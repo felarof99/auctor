@@ -37,6 +37,7 @@ export async function analyze(
   timeWindow: string,
   path: string,
   jsonPath?: string,
+  options?: { fetch?: boolean },
 ): Promise<void> {
   const repoPath = resolve(path)
   const gitDir = join(repoPath, '.git')
