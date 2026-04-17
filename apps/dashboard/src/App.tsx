@@ -1,3 +1,4 @@
+import type { BundleAuthorStats } from '@auctor/shared/aggregate'
 import type { RepoAuthorStats } from '@auctor/shared/report'
 import { RefreshCw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -14,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import type { BundleView } from '@/src/hooks/use-reports'
 import { useReports } from '@/src/hooks/use-reports'
 
 type SortKey = keyof Pick<
@@ -56,15 +58,157 @@ function SortableHeader({
   )
 }
 
-export function App() {
-  const { reports, repoNames, loading, error, refresh } = useReports()
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
+function AuthorTable({
+  authors,
+  query,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  authors: (RepoAuthorStats | BundleAuthorStats)[]
+  query: string
+  sortKey: SortKey
+  sortDir: 'asc' | 'desc'
+  onSort: (key: SortKey) => void
+}) {
+  const filtered = useMemo(() => {
+    let list = authors
+    const q = query.trim().toLowerCase()
+    if (q) {
+      list = list.filter((a) => a.author.toLowerCase().includes(q))
+    }
+    return [...list].sort((a, b) => {
+      const av = a[sortKey]
+      const bv = b[sortKey]
+      return sortDir === 'desc' ? bv - av : av - bv
+    })
+  }, [authors, query, sortKey, sortDir])
+
+  if (filtered.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>No authors found</CardTitle>
+          <CardDescription>
+            {query ? 'Try a different search.' : 'No data available.'}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-border border-b bg-muted/50">
+            <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">
+              Rank
+            </th>
+            <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">
+              Author
+            </th>
+            <SortableHeader
+              label="Commits"
+              sortKey="commits"
+              currentSort={sortKey}
+              currentDir={sortDir}
+              onSort={onSort}
+            />
+            <SortableHeader
+              label="PRs"
+              sortKey="prs"
+              currentSort={sortKey}
+              currentDir={sortDir}
+              onSort={onSort}
+            />
+            <SortableHeader
+              label="+LOC"
+              sortKey="insertions"
+              currentSort={sortKey}
+              currentDir={sortDir}
+              onSort={onSort}
+            />
+            <SortableHeader
+              label="-LOC"
+              sortKey="deletions"
+              currentSort={sortKey}
+              currentDir={sortDir}
+              onSort={onSort}
+            />
+            <SortableHeader
+              label="Net"
+              sortKey="net"
+              currentSort={sortKey}
+              currentDir={sortDir}
+              onSort={onSort}
+            />
+            <SortableHeader
+              label="Score"
+              sortKey="score"
+              currentSort={sortKey}
+              currentDir={sortDir}
+              onSort={onSort}
+            />
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((author, i) => {
+            const rank = i + 1
+            return (
+              <tr
+                key={author.author}
+                className="border-border border-b last:border-0 hover:bg-muted/30"
+              >
+                <td
+                  className={cn(
+                    'px-4 py-3 font-bold',
+                    RANK_COLORS[rank] ?? 'text-muted-foreground',
+                  )}
+                >
+                  {rank}
+                </td>
+                <td className="px-4 py-3 font-medium text-foreground">
+                  {author.author}
+                </td>
+                <td className="px-4 py-3 text-right text-muted-foreground">
+                  {author.commits}
+                </td>
+                <td className="px-4 py-3 text-right text-muted-foreground">
+                  {author.prs}
+                </td>
+                <td className="px-4 py-3 text-right text-green-400">
+                  {formatNumber(author.insertions)}
+                </td>
+                <td className="px-4 py-3 text-right text-muted-foreground">
+                  {formatNumber(author.deletions)}
+                </td>
+                <td className="px-4 py-3 text-right text-muted-foreground">
+                  {formatNumber(author.net)}
+                </td>
+                <td className="px-4 py-3 text-right font-bold text-indigo-400">
+                  {author.score.toFixed(2)}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function BundlePanel({ bundle }: { bundle: BundleView }) {
+  const repoNames = Object.keys(bundle.repos)
+  const hasAggregate = bundle.aggregate !== null
+
+  // "aggregate" is a reserved tab value; repo tabs use the repo name
+  const defaultTab = hasAggregate ? 'aggregate' : (repoNames[0] ?? '')
+  const [selectedTab, setSelectedTab] = useState(defaultTab)
+
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('score')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-
-  const activeRepo = selectedRepo ?? repoNames[0] ?? null
-  const report = activeRepo ? reports[activeRepo] : null
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -75,20 +219,94 @@ export function App() {
     }
   }
 
-  const filtered = useMemo(() => {
-    if (!report) return []
-    let authors = report.authors
-    const q = query.trim().toLowerCase()
-    if (q) {
-      authors = authors.filter((a) => a.author.toLowerCase().includes(q))
+  const activeAuthors = useMemo(() => {
+    if (selectedTab === 'aggregate' && bundle.aggregate) {
+      return bundle.aggregate.authors
     }
-    const sorted = [...authors].sort((a, b) => {
-      const av = a[sortKey]
-      const bv = b[sortKey]
-      return sortDir === 'desc' ? bv - av : av - bv
-    })
-    return sorted
-  }, [report, query, sortKey, sortDir])
+    return bundle.repos[selectedTab]?.authors ?? []
+  }, [selectedTab, bundle])
+
+  const windowDays = useMemo(() => {
+    if (selectedTab === 'aggregate' && bundle.aggregate) {
+      return bundle.aggregate.window_days
+    }
+    return bundle.repos[selectedTab]?.window_days ?? null
+  }, [selectedTab, bundle])
+
+  const generatedAt = useMemo(() => {
+    if (selectedTab === 'aggregate' && bundle.aggregate) {
+      return bundle.aggregate.generated_at
+    }
+    return bundle.repos[selectedTab]?.generated_at ?? null
+  }, [selectedTab, bundle])
+
+  const showSecondaryTabs = hasAggregate
+    ? repoNames.length > 0
+    : repoNames.length > 1
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Window badge + secondary tabs row */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {windowDays !== null && (
+          <Badge variant="outline">{windowDays}d window</Badge>
+        )}
+      </div>
+
+      {showSecondaryTabs && (
+        <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+          <TabsList>
+            {hasAggregate && (
+              <TabsTrigger value="aggregate">Aggregate</TabsTrigger>
+            )}
+            {repoNames.map((repo) => (
+              <TabsTrigger key={repo} value={repo}>
+                {repo}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
+
+      {/* Search + count */}
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-[260px] flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by author name..."
+            className="pl-9"
+          />
+        </div>
+        <Badge variant="secondary">
+          {activeAuthors.length} author{activeAuthors.length !== 1 ? 's' : ''}
+        </Badge>
+      </div>
+
+      <AuthorTable
+        authors={activeAuthors}
+        query={query}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSort={handleSort}
+      />
+
+      {generatedAt && (
+        <div className="text-muted-foreground text-xs">
+          Generated {new Date(generatedAt).toLocaleString()}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function App() {
+  const { bundles, bundleNames, loading, error, refresh } = useReports()
+  const [selectedBundle, setSelectedBundle] = useState<string | null>(null)
+
+  const activeBundleName = selectedBundle ?? bundleNames[0] ?? null
+  const activeBundle = activeBundleName ? bundles[activeBundleName] : null
 
   if (loading) {
     return (
@@ -134,22 +352,20 @@ export function App() {
               Engineering Productivity Leaderboard
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {report && (
-              <Badge variant="outline">{report.window_days}d window</Badge>
-            )}
-            <Button type="button" variant="outline" size="sm" onClick={refresh}>
-              <RefreshCw className="size-4" />
-              Refresh
-            </Button>
-          </div>
+          <Button type="button" variant="outline" size="sm" onClick={refresh}>
+            <RefreshCw className="size-4" />
+            Refresh
+          </Button>
         </div>
 
-        {/* Repo Tabs */}
-        {repoNames.length > 1 && (
-          <Tabs value={activeRepo ?? undefined} onValueChange={setSelectedRepo}>
+        {/* Primary bundle tabs (only when >1 bundle) */}
+        {bundleNames.length > 1 && (
+          <Tabs
+            value={activeBundleName ?? undefined}
+            onValueChange={setSelectedBundle}
+          >
             <TabsList>
-              {repoNames.map((name) => (
+              {bundleNames.map((name) => (
                 <TabsTrigger key={name} value={name}>
                   {name}
                 </TabsTrigger>
@@ -158,139 +374,18 @@ export function App() {
           </Tabs>
         )}
 
-        {/* Search */}
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-[260px] flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by author name..."
-              className="pl-9"
-            />
-          </div>
-          <Badge variant="secondary">
-            {filtered.length} author{filtered.length !== 1 ? 's' : ''}
-          </Badge>
-        </div>
-
-        {/* Leaderboard Table */}
-        {filtered.length === 0 ? (
+        {/* Active bundle content */}
+        {activeBundle ? (
+          <BundlePanel bundle={activeBundle} />
+        ) : (
           <Card>
             <CardHeader>
-              <CardTitle>No authors found</CardTitle>
+              <CardTitle>No data</CardTitle>
               <CardDescription>
-                {query
-                  ? 'Try a different search.'
-                  : 'No data available for this repo.'}
+                No bundles found in the manifest.
               </CardDescription>
             </CardHeader>
           </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-border border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">
-                    Rank
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">
-                    Author
-                  </th>
-                  <SortableHeader
-                    label="Commits"
-                    sortKey="commits"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="PRs"
-                    sortKey="prs"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="+LOC"
-                    sortKey="insertions"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="-LOC"
-                    sortKey="deletions"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="Net"
-                    sortKey="net"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="Score"
-                    sortKey="score"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((author, i) => {
-                  const rank = i + 1
-                  return (
-                    <tr
-                      key={author.author}
-                      className="border-border border-b last:border-0 hover:bg-muted/30"
-                    >
-                      <td
-                        className={cn(
-                          'px-4 py-3 font-bold',
-                          RANK_COLORS[rank] ?? 'text-muted-foreground',
-                        )}
-                      >
-                        {rank}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-foreground">
-                        {author.author}
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground">
-                        {author.commits}
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground">
-                        {author.prs}
-                      </td>
-                      <td className="px-4 py-3 text-right text-green-400">
-                        {formatNumber(author.insertions)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground">
-                        {formatNumber(author.deletions)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground">
-                        {formatNumber(author.net)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-indigo-400">
-                        {author.score.toFixed(2)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Footer */}
-        {report && (
-          <div className="text-muted-foreground text-xs">
-            Generated {new Date(report.generated_at).toLocaleString()}
-          </div>
         )}
       </div>
     </div>
