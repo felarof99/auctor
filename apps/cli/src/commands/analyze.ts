@@ -17,6 +17,7 @@ import {
   insertWorkUnit,
 } from '../convex-client'
 import { getDiffForCommits } from '../git/diff'
+import { fetchAllBranches } from '../git/fetch'
 import {
   getGitLog,
   getMergeCommits,
@@ -80,6 +81,20 @@ export async function analyze(
   }
 
   const since = parseTimeWindow(timeWindow)
+
+  if (options?.fetch !== false) {
+    console.log('Fetching latest branches from all remotes...')
+    try {
+      await fetchAllBranches(repoPath)
+    } catch (err) {
+      console.warn(
+        'Warning: git fetch failed, analyzing with local refs only. Coverage may be incomplete.',
+      )
+      console.warn(String(err))
+    }
+  } else {
+    console.log('Skipping fetch (--no-fetch). Analyzing local refs only.')
+  }
 
   const [logOutput, mergeShas] = await Promise.all([
     getGitLog(repoPath, since),
