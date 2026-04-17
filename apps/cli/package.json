@@ -11,10 +11,12 @@
     "test": "bun test"
   },
   "dependencies": {
-    "commander": "^13.0.0",
+    "@auctor/database": "workspace:*",
+    "@auctor/shared": "workspace:*",
     "@clack/prompts": "^0.10.0",
     "cli-table3": "^0.6.5",
-    "@auctor/database": "workspace:*",
-    "@auctor/shared": "workspace:*"
+    "commander": "^13.0.0",
+    "fuzzysort": "^3.1.0",
+    "yaml": "^2.8.3"
   }
 }
