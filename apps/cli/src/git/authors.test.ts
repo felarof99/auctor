@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getUniqueAuthors } from './authors'
+import type { Commit } from '../types'
+import { getUniqueAuthors, resolveCommitsToGithubAuthors } from './authors'
 
 const tempDirs: string[] = []
 const originalFetch = globalThis.fetch
@@ -49,6 +50,23 @@ async function commitAs(
     repoPath,
   )
   return run(['git', 'rev-parse', 'HEAD'], repoPath)
+}
+
+function parsedCommit(
+  sha: string,
+  author: string,
+  authorEmail: string,
+): Commit {
+  return {
+    sha,
+    author,
+    authorEmail,
+    date: new Date('2026-04-17T12:00:00Z'),
+    subject: 'test commit',
+    insertions: 1,
+    deletions: 0,
+    isMerge: false,
+  }
 }
 
 afterEach(() => {
@@ -157,5 +175,45 @@ describe('getUniqueAuthors', () => {
     const authors = await getUniqueAuthors(repoPath, new Date('2000-01-01'))
 
     expect(authors).toEqual([])
+  })
+
+  test('resolves analyzed commits to GitHub usernames without aliases', async () => {
+    const repoPath = mkTmp()
+    await run(['git', 'init', '-b', 'main'], repoPath)
+    await run(
+      ['git', 'remote', 'add', 'origin', 'https://github.com/acme/widgets.git'],
+      repoPath,
+    )
+    const commit = parsedCommit(
+      'abc123',
+      'Nithin Sonti',
+      'nithin.sonti@gmail.com',
+    )
+
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({ author: { login: 'felarof99' } }))
+    }) as unknown as typeof fetch
+
+    const commits = await resolveCommitsToGithubAuthors(repoPath, [commit])
+
+    expect(commits).toEqual([{ ...commit, author: 'felarof99' }])
+  })
+
+  test('drops analyzed commits that cannot resolve to a GitHub username', async () => {
+    const repoPath = mkTmp()
+    await run(['git', 'init', '-b', 'main'], repoPath)
+    await run(
+      ['git', 'remote', 'add', 'origin', 'https://github.com/acme/widgets.git'],
+      repoPath,
+    )
+    const commit = parsedCommit('abc123', 'Unknown User', 'unknown@example.com')
+
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({ author: null }))
+    }) as unknown as typeof fetch
+
+    const commits = await resolveCommitsToGithubAuthors(repoPath, [commit])
+
+    expect(commits).toEqual([])
   })
 })

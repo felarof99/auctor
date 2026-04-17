@@ -37,5 +37,4 @@ export interface BundleConfig {
   convex_url?: string
   repos: BundleRepo[]
   engineers: string[]
-  aliases?: Record<string, string[]>
 }

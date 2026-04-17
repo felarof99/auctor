@@ -7,8 +7,8 @@ import {
   aggregateBundleResults,
   type PerRepoScoredUnit,
 } from '../analyze-aggregate'
-import { createAuthorResolver } from '../author-identity'
 import { loadBundle } from '../bundle'
+import { resolveCommitsToGithubAuthors } from '../git/authors'
 import { getDiffForCommits } from '../git/diff'
 import { fetchAllBranches } from '../git/fetch'
 import {
@@ -132,11 +132,9 @@ async function analyzeSingleRepo(
   for (const commit of commits) {
     commit.isMerge = mergeShas.has(commit.sha)
   }
-  const resolveAuthor = createAuthorResolver(bundle)
-  commits = commits.flatMap((commit) => {
-    const author = resolveAuthor(commit)
-    return author ? [{ ...commit, author }] : []
-  })
+  commits = await resolveCommitsToGithubAuthors(repo.path, commits)
+  const engineerSet = new Set(bundle.engineers)
+  commits = commits.filter((commit) => engineerSet.has(commit.author))
   if (commits.length === 0) return []
 
   const branchDayUnits = extractBranchDayUnits(commits, 'main')

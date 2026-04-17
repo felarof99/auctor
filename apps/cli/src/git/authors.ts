@@ -1,3 +1,5 @@
+import type { Commit } from '../types'
+
 export interface AuthorInfo {
   username: string
   name: string
@@ -91,11 +93,44 @@ async function getGithubCommitAuthorLogin(
     : null
 }
 
+async function getCommitGithubUsername(
+  repoSlug: string | null,
+  commit: Pick<Commit, 'sha' | 'authorEmail'>,
+): Promise<string | null> {
+  const username = extractGithubUsername(commit.authorEmail ?? '')
+  if (username) return username
+  if (!repoSlug) return null
+  return getGithubCommitAuthorLogin(repoSlug, commit.sha)
+}
+
+export async function resolveCommitsToGithubAuthors(
+  repoPath: string,
+  commits: Commit[],
+): Promise<Commit[]> {
+  const githubRepoSlug = await getGithubRepoSlug(repoPath)
+  const usernameByEmail = new Map<string, string | null>()
+  const resolved: Commit[] = []
+
+  for (const commit of commits) {
+    const email = commit.authorEmail?.trim().toLowerCase()
+    const username =
+      email && usernameByEmail.has(email)
+        ? (usernameByEmail.get(email) ?? null)
+        : await getCommitGithubUsername(githubRepoSlug, commit)
+    if (email && !usernameByEmail.has(email)) {
+      usernameByEmail.set(email, username)
+    }
+    if (!username) continue
+    resolved.push({ ...commit, author: username })
+  }
+
+  return resolved
+}
+
 export async function getUniqueAuthors(
   repoPath: string,
   since: Date,
 ): Promise<AuthorInfo[]> {
-  const githubRepoSlug = await getGithubRepoSlug(repoPath)
   const proc = Bun.spawn(
     [
       'git',
@@ -113,39 +148,28 @@ export async function getUniqueAuthors(
     throw new Error(`git log failed: ${stderr}`)
   }
 
+  const commits: Commit[] = output
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, name, email] = line.split('\x1f')
+      return {
+        sha,
+        author: name,
+        ...(email ? { authorEmail: email } : {}),
+        date: new Date(0),
+        subject: '',
+        insertions: 0,
+        deletions: 0,
+        isMerge: false,
+      }
+    })
+
   const seen = new Map<string, AuthorInfo>()
-  const candidates = new Map<string, string[]>()
-
-  for (const line of output.trim().split('\n').filter(Boolean)) {
-    const [sha, name, email] = line.split('\x1f')
-    const username = extractGithubUsername(email ?? '')
-    if (username) {
-      seen.set(username, { username, name: username })
-      continue
-    }
-    if (!githubRepoSlug || !sha || !email) continue
-    const key = `${name}\x1f${email}`
-    const shas = candidates.get(key)
-    if (shas) {
-      shas.push(sha)
-    } else {
-      candidates.set(key, [sha])
-    }
-  }
-
-  if (!githubRepoSlug) {
-    return [...seen.values()].sort((a, b) =>
-      a.username.localeCompare(b.username),
-    )
-  }
-
-  for (const shas of candidates.values()) {
-    for (const sha of shas) {
-      const username = await getGithubCommitAuthorLogin(githubRepoSlug, sha)
-      if (!username) continue
-      seen.set(username, { username, name: username })
-      break
-    }
+  const resolved = await resolveCommitsToGithubAuthors(repoPath, commits)
+  for (const commit of resolved) {
+    seen.set(commit.author, { username: commit.author, name: commit.author })
   }
 
   return [...seen.values()].sort((a, b) => a.username.localeCompare(b.username))
