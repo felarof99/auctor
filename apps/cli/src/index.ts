@@ -2,6 +2,7 @@
 import { Command } from 'commander'
 import { analyze } from './commands/analyze'
 import { configure } from './commands/configure'
+import { microscope } from './commands/microscope'
 
 const program = new Command()
   .name('auctor')
@@ -39,5 +40,14 @@ program
       await analyze(configPath, timeWindow, opts.json, { fetch: opts.fetch })
     },
   )
+
+program
+  .command('microscope')
+  .description('Zoom into one engineer across a bundle, grouped by day')
+  .argument('<config>', 'Path to bundle YAML file')
+  .argument('<time-window>', 'Time window (e.g., -7d, -30d)')
+  .action(async (configPath: string, timeWindow: string) => {
+    await microscope(configPath, timeWindow)
+  })
 
 program.parse()
