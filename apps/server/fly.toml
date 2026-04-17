@@ -2,7 +2,6 @@ app = 'auctor-server'
 primary_region = 'sjc'
 
 [build]
-  dockerfile = "apps/server/Dockerfile"
 
 [env]
   PORT = "3000"

@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 import type {
   ClassifiedWorkUnit,
   ClassifyRequest,
@@ -10,6 +12,10 @@ import { RepoManager } from '../repo/manager'
 
 const REPOS_DIR = process.env.REPOS_DIR || '/tmp/auctor-repos'
 const CACHE_DB = process.env.CACHE_DB || '/tmp/auctor-cache.sqlite'
+
+// Ensure directories exist before opening SQLite or cloning repos
+mkdirSync(dirname(CACHE_DB), { recursive: true })
+mkdirSync(REPOS_DIR, { recursive: true })
 
 const repoManager = new RepoManager(REPOS_DIR)
 const cache = new ClassificationCache(CACHE_DB)
