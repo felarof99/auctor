@@ -7,28 +7,23 @@ repos:
   - name: browseros-ai-gateway
     path: /Users/felarof01/Workspaces/build/browseros-ai-gateway
 engineers:
-  - nikhil
-  - dani
-  - shivam
-  - neel
-  - felarof01
+  - DaniAkash
+  - felarof99
+  - neel04
+  - shadowfax92
+  - shivammittal274
 aliases:
-  nikhil:
-    - shadowfax92
+  DaniAkash:
+    - Dani Akash
+  felarof99:
+    - nithin.sonti
+    - Felarof
+  neel04:
+    - neelgupta04
+    - Neel Gupta
+  shadowfax92:
     - nikhilsv92
     - Nikhil
     - Nikhil Sonti
-  dani:
-    - DaniAkash
-    - Dani Akash
-  shivam:
-    - shivammittal274
+  shivammittal274:
     - mittal.shivam103
-  neel:
-    - neel04
-    - neelgupta04
-    - Neel Gupta
-  felarof01:
-    - felarof99
-    - nithin.sonti
-    - Felarof
