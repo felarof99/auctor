@@ -7,8 +7,7 @@ import {
   aggregateBundleResults,
   type PerRepoScoredUnit,
 } from '../analyze-aggregate'
-// biome-ignore lint/correctness/noUnusedImports: temporarily disabled server call, see analyzeSingleRepo
-import { classifyWorkUnits } from '../api-client'
+import { createAuthorResolver } from '../author-identity'
 import { loadBundle } from '../bundle'
 import { getDiffForCommits } from '../git/diff'
 import { fetchAllBranches } from '../git/fetch'
@@ -133,8 +132,11 @@ async function analyzeSingleRepo(
   for (const commit of commits) {
     commit.isMerge = mergeShas.has(commit.sha)
   }
-  const engineerSet = new Set(bundle.engineers)
-  commits = commits.filter((c) => engineerSet.has(c.author))
+  const resolveAuthor = createAuthorResolver(bundle)
+  commits = commits.flatMap((commit) => {
+    const author = resolveAuthor(commit)
+    return author ? [{ ...commit, author }] : []
+  })
   if (commits.length === 0) return []
 
   const branchDayUnits = extractBranchDayUnits(commits, 'main')
@@ -149,18 +151,6 @@ async function analyzeSingleRepo(
   )
 
   const classificationMap = new Map<string, Classification>()
-  // Temporarily classify everything as medium/5; Fly.io server call disabled.
-  // if (bundle.server_url && hydratedUnits.length > 0) {
-  //   const repoUrl = repo.repo_url ?? repo.path
-  //   const response = await classifyWorkUnits(
-  //     bundle.server_url,
-  //     repoUrl,
-  //     hydratedUnits,
-  //   )
-  //   for (const item of response.classifications) {
-  //     classificationMap.set(item.id, item.classification)
-  //   }
-  // } else if (!bundle.server_url) {
   for (const unit of hydratedUnits) {
     classificationMap.set(unit.id, {
       type: 'feature',
@@ -169,7 +159,6 @@ async function analyzeSingleRepo(
       reasoning: 'default classification',
     })
   }
-  // }
 
   const scored: PerRepoScoredUnit[] = []
   for (const unit of hydratedUnits) {

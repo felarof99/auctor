@@ -14,28 +14,45 @@ import type { BundleConfig } from '../types'
 
 export async function configure(
   configPath: string,
-  repoPath: string,
   timeWindow: string,
+  repoPaths: string[],
 ): Promise<void> {
-  const absoluteConfigPath = resolve(configPath)
-  const absoluteRepoPath = resolve(repoPath)
-
-  if (!existsSync(`${absoluteRepoPath}/.git`)) {
-    console.error(`Not a git repository: ${absoluteRepoPath}`)
+  if (repoPaths.length === 0) {
+    console.error('At least one repo path is required.')
     process.exit(1)
+  }
+
+  const absoluteConfigPath = resolve(configPath)
+  const absoluteRepoPaths = repoPaths.map((p) => resolve(p))
+
+  for (const repoPath of absoluteRepoPaths) {
+    if (!existsSync(`${repoPath}/.git`)) {
+      console.error(`Not a git repository: ${repoPath}`)
+      process.exit(1)
+    }
   }
 
   clack.intro('auctor configure')
 
-  const bundle = await getOrInitBundle(absoluteConfigPath)
+  let bundle = await getOrInitBundle(absoluteConfigPath)
 
   const since = parseTimeWindow(timeWindow)
-  const authorInfos = await getUniqueAuthors(absoluteRepoPath, since)
+
+  const usernames = new Map<string, string>()
+  for (const repoPath of absoluteRepoPaths) {
+    const authorInfos = await getUniqueAuthors(repoPath, since)
+    for (const info of authorInfos) {
+      usernames.set(info.username, info.name)
+    }
+  }
+  const authorInfos = [...usernames.entries()]
+    .map(([username, name]) => ({ username, name }))
+    .sort((a, b) => a.username.localeCompare(b.username))
 
   let selected: string[] = []
   if (authorInfos.length === 0) {
     clack.log.warn(
-      `No authors found in ${timeWindow} window; skipping engineer prompt.`,
+      `No authors found in ${timeWindow} window across ${absoluteRepoPaths.length} repo(s); skipping engineer prompt.`,
     )
   } else {
     const picked = await clack.multiselect({
@@ -56,17 +73,19 @@ export async function configure(
     selected = picked as string[]
   }
 
-  const repoEntry = findRepoByPath(bundle, absoluteRepoPath) ?? {
-    name: basename(absoluteRepoPath),
-    path: absoluteRepoPath,
+  for (const repoPath of absoluteRepoPaths) {
+    const repoEntry = findRepoByPath(bundle, repoPath) ?? {
+      name: basename(repoPath),
+      path: repoPath,
+    }
+    bundle = addRepo(bundle, repoEntry)
   }
-  const withRepo = addRepo(bundle, repoEntry)
-  const withEngineers = mergeEngineers(withRepo, selected)
+  bundle = mergeEngineers(bundle, selected)
 
-  await saveBundle(absoluteConfigPath, withEngineers)
+  await saveBundle(absoluteConfigPath, bundle)
 
   clack.outro(
-    `Saved bundle ${withEngineers.name}: ${withEngineers.repos.length} repo(s), ${withEngineers.engineers.length} engineer(s)`,
+    `Saved bundle ${bundle.name}: ${bundle.repos.length} repo(s), ${bundle.engineers.length} engineer(s)`,
   )
 }
 

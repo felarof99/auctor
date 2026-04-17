@@ -12,13 +12,17 @@ const program = new Command()
 program
   .command('configure')
   .allowUnknownOption()
-  .description('Add a repo to a bundle and refresh its engineer list')
+  .description(
+    'Add one or more repos to a bundle and refresh its engineer list',
+  )
   .argument('<config>', 'Path to bundle YAML file')
-  .argument('<repo>', 'Path to git repository to add')
   .argument('<time-window>', 'Time window for author scan (e.g., -7d, -30d)')
-  .action(async (configPath: string, repoPath: string, timeWindow: string) => {
-    await configure(configPath, repoPath, timeWindow)
-  })
+  .argument('<repos...>', 'One or more paths to git repositories to add')
+  .action(
+    async (configPath: string, timeWindow: string, repoPaths: string[]) => {
+      await configure(configPath, timeWindow, repoPaths)
+    },
+  )
 
 program
   .command('analyze')

@@ -38,6 +38,7 @@ describe('saveBundle + loadBundle', () => {
       ...base,
       server_url: 'https://server',
       convex_url: 'https://convex',
+      aliases: { alice: ['Alice Example', 'alice@example.com'] },
     })
     const loaded = await loadBundle(path)
     expect(loaded.name).toBe('browseros')
@@ -45,6 +46,9 @@ describe('saveBundle + loadBundle', () => {
     expect(loaded.convex_url).toBe('https://convex')
     expect(loaded.repos).toEqual([{ name: 'main', path: '/tmp/main' }])
     expect(loaded.engineers).toEqual(['alice'])
+    expect(loaded.aliases).toEqual({
+      alice: ['Alice Example', 'alice@example.com'],
+    })
   })
 
   test('loadBundle throws when file does not exist', async () => {

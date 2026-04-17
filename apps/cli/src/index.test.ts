@@ -33,8 +33,8 @@ describe('CLI argument parsing', () => {
     const { exitCode, output } = await runCli([
       'configure',
       '/tmp/missing-auctor-config.yaml',
-      '/tmp/not-a-repo',
       '-7d',
+      '/tmp/not-a-repo',
     ])
 
     expect(exitCode).toBe(1)

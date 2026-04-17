@@ -60,6 +60,24 @@ feat: add user auth
     expect(commits[0].isMerge).toBe(false)
   })
 
+  test('parses author email when present', () => {
+    const output = `COMMIT_START
+abc123def
+Nikhil Sonti
+nikhilsv92@gmail.com
+2026-04-10T14:30:00-07:00
+feat: add user auth
+
+ 3 files changed, 45 insertions(+), 12 deletions(-)`
+
+    const commits = parseGitLog(output)
+    expect(commits).toHaveLength(1)
+    expect(commits[0].author).toBe('Nikhil Sonti')
+    expect(commits[0].authorEmail).toBe('nikhilsv92@gmail.com')
+    expect(commits[0].date.toISOString()).toBe('2026-04-10T21:30:00.000Z')
+    expect(commits[0].subject).toBe('feat: add user auth')
+  })
+
   test('parses multiple commits', () => {
     const output = `COMMIT_START
 abc123

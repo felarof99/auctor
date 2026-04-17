@@ -1,5 +1,4 @@
 name: browseros
-server_url: https://auctor-server.fly.dev
 repos:
   - name: browseros-main
     path: /Users/felarof01/Workspaces/build/browseros-main
@@ -8,8 +7,28 @@ repos:
   - name: browseros-ai-gateway
     path: /Users/felarof01/Workspaces/build/browseros-ai-gateway
 engineers:
-  - DaniAkash
-  - felarof99
-  - neel04
-  - shadowfax92
-  - shivammittal274
+  - nikhil
+  - dani
+  - shivam
+  - neel
+  - felarof01
+aliases:
+  nikhil:
+    - shadowfax92
+    - nikhilsv92
+    - Nikhil
+    - Nikhil Sonti
+  dani:
+    - DaniAkash
+    - Dani Akash
+  shivam:
+    - shivammittal274
+    - mittal.shivam103
+  neel:
+    - neel04
+    - neelgupta04
+    - Neel Gupta
+  felarof01:
+    - felarof99
+    - nithin.sonti
+    - Felarof

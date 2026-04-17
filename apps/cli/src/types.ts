@@ -1,6 +1,7 @@
 export interface Commit {
   sha: string
   author: string
+  authorEmail?: string
   date: Date
   subject: string
   insertions: number
@@ -36,4 +37,5 @@ export interface BundleConfig {
   convex_url?: string
   repos: BundleRepo[]
   engineers: string[]
+  aliases?: Record<string, string[]>
 }

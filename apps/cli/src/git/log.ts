@@ -9,13 +9,16 @@ export function parseGitLog(output: string): Commit[] {
       .filter((l) => l !== '')
     const sha = lines[0]
     const author = lines[1]
-    const date = new Date(lines[2])
-    const subject = lines[3]
+    const hasEmail = Number.isNaN(Date.parse(lines[2]))
+    const authorEmail = hasEmail ? lines[2] : undefined
+    const date = new Date(hasEmail ? lines[3] : lines[2])
+    const subject = hasEmail ? lines[4] : lines[3]
+    const statStart = hasEmail ? 5 : 4
 
     let insertions = 0
     let deletions = 0
 
-    for (let i = 4; i < lines.length; i++) {
+    for (let i = statStart; i < lines.length; i++) {
       const line = lines[i]
       const insertMatch = line.match(/(\d+) insertion/)
       const deleteMatch = line.match(/(\d+) deletion/)
@@ -23,7 +26,16 @@ export function parseGitLog(output: string): Commit[] {
       if (deleteMatch) deletions = parseInt(deleteMatch[1], 10)
     }
 
-    return { sha, author, date, subject, insertions, deletions, isMerge: false }
+    return {
+      sha,
+      author,
+      ...(authorEmail ? { authorEmail } : {}),
+      date,
+      subject,
+      insertions,
+      deletions,
+      isMerge: false,
+    }
   })
 }
 
@@ -51,7 +63,7 @@ export async function getGitLog(
       'log',
       '--all',
       '--shortstat',
-      '--format=COMMIT_START%n%H%n%an%n%aI%n%s',
+      '--format=COMMIT_START%n%H%n%an%n%ae%n%aI%n%s',
       `--since=${since.toISOString()}`,
     ],
     { cwd: repoPath, stdout: 'pipe', stderr: 'pipe' },

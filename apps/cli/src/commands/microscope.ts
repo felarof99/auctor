@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import * as clack from '@clack/prompts'
 import fuzzysort from 'fuzzysort'
+import { createAuthorResolver } from '../author-identity'
 import { loadBundle } from '../bundle'
 import { getGitLog, parseGitLog, parseTimeWindow } from '../git/log'
 import {
@@ -31,6 +32,7 @@ export async function microscope(
   }
 
   const since = parseTimeWindow(timeWindow)
+  const resolveAuthor = createAuthorResolver(bundle)
   const commits: MicroscopeCommit[] = []
   for (const repo of bundle.repos) {
     if (!existsSync(`${repo.path}/.git`)) {
@@ -38,7 +40,7 @@ export async function microscope(
       continue
     }
     const log = await getGitLog(repo.path, since)
-    const parsed = parseGitLog(log).filter((c) => c.author === username)
+    const parsed = parseGitLog(log).filter((c) => resolveAuthor(c) === username)
     for (const c of parsed) {
       commits.push({
         repo: repo.name,

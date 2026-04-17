@@ -21,6 +21,7 @@ export async function saveBundle(
     ...(config.convex_url ? { convex_url: config.convex_url } : {}),
     repos: config.repos,
     engineers: config.engineers,
+    ...(config.aliases ? { aliases: config.aliases } : {}),
   }
   await Bun.write(configPath, stringify(ordered))
 }
@@ -86,6 +87,28 @@ function validate(raw: unknown, path: string): BundleConfig {
     }
     return e
   })
+  let aliases: Record<string, string[]> | undefined
+  if (obj.aliases !== undefined) {
+    if (!obj.aliases || typeof obj.aliases !== 'object') {
+      throw new Error(`Bundle ${path} aliases is not an object`)
+    }
+    aliases = {}
+    for (const [engineer, values] of Object.entries(
+      obj.aliases as Record<string, unknown>,
+    )) {
+      if (!Array.isArray(values)) {
+        throw new Error(`Bundle ${path} aliases.${engineer} is not an array`)
+      }
+      aliases[engineer] = values.map((v, i) => {
+        if (typeof v !== 'string') {
+          throw new Error(
+            `Bundle ${path} aliases.${engineer}[${i}] is not a string`,
+          )
+        }
+        return v
+      })
+    }
+  }
   return {
     name: obj.name,
     ...(typeof obj.server_url === 'string'
@@ -96,5 +119,6 @@ function validate(raw: unknown, path: string): BundleConfig {
       : {}),
     repos,
     engineers,
+    ...(aliases ? { aliases } : {}),
   }
 }
