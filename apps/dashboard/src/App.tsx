@@ -1,7 +1,10 @@
 import type { BundleAuthorStats } from '@auctor/shared/aggregate'
-import type { RepoAuthorStats } from '@auctor/shared/report'
-import { RefreshCw, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import type {
+  AuthorConsideredItems,
+  RepoAuthorStats,
+} from '@auctor/shared/report'
+import { RefreshCw, Search, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,6 +25,10 @@ type SortKey = keyof Pick<
   RepoAuthorStats,
   'score' | 'commits' | 'prs' | 'insertions' | 'deletions' | 'net'
 >
+
+type AuthorRow = (RepoAuthorStats | BundleAuthorStats) & {
+  considered: AuthorConsideredItems
+}
 
 const RANK_COLORS: Record<number, string> = {
   1: 'text-yellow-400',
@@ -58,18 +65,134 @@ function SortableHeader({
   )
 }
 
+function shortSha(sha: string): string {
+  return sha.slice(0, 7)
+}
+
+function ProvenanceSection<T extends { repo: string; message: string }>({
+  title,
+  items,
+  emptyText,
+  renderIdentifier,
+}: {
+  title: string
+  items: T[]
+  emptyText: string
+  renderIdentifier: (item: T) => string
+}) {
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-medium text-sm">{title}</h3>
+        <Badge variant="secondary">{items.length}</Badge>
+      </div>
+      {items.length === 0 ? (
+        <div className="rounded-md border border-border px-3 py-2 text-muted-foreground text-sm">
+          {emptyText}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-md border border-border">
+          {items.map((item, index) => (
+            <div
+              key={`${item.repo}-${renderIdentifier(item)}-${index}`}
+              className="grid grid-cols-[minmax(5rem,8rem)_minmax(4.5rem,6rem)_1fr] gap-3 border-border border-b px-3 py-2 text-sm last:border-b-0"
+            >
+              <div className="truncate text-muted-foreground">{item.repo}</div>
+              <div className="font-mono text-muted-foreground">
+                {renderIdentifier(item)}
+              </div>
+              <div className="min-w-0 break-words text-foreground">
+                {item.message}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function AuthorProvenanceModal({
+  author,
+  onClose,
+}: {
+  author: AuthorRow | null
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!author) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [author, onClose])
+
+  if (!author) return null
+
+  return (
+    <div
+      aria-labelledby="author-provenance-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+      role="dialog"
+    >
+      <div className="flex max-h-[85dvh] w-full max-w-3xl flex-col rounded-lg border border-border bg-background shadow-lg">
+        <div className="flex items-start justify-between gap-4 border-border border-b px-5 py-4">
+          <div>
+            <h2 className="font-semibold text-xl" id="author-provenance-title">
+              {author.author}
+            </h2>
+            <div className="text-muted-foreground text-sm">
+              {author.commits} commits / {author.prs} PRs considered
+            </div>
+          </div>
+          <Button
+            aria-label="Close provenance modal"
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+          >
+            <X className="size-4" />
+            Close
+          </Button>
+        </div>
+        <div className="grid gap-6 overflow-y-auto px-5 py-4">
+          <ProvenanceSection
+            emptyText="No commits counted"
+            items={author.considered.commits}
+            title="Commits"
+            renderIdentifier={(item) => shortSha(item.sha)}
+          />
+          <ProvenanceSection
+            emptyText="No PR merge commits counted"
+            items={author.considered.prs}
+            title="PRs"
+            renderIdentifier={(item) =>
+              item.pr_number ? `#${item.pr_number}` : shortSha(item.sha)
+            }
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AuthorTable({
   authors,
   query,
   sortKey,
   sortDir,
   onSort,
+  onAuthorClick,
 }: {
-  authors: (RepoAuthorStats | BundleAuthorStats)[]
+  authors: AuthorRow[]
   query: string
   sortKey: SortKey
   sortDir: 'asc' | 'desc'
   onSort: (key: SortKey) => void
+  onAuthorClick: (author: AuthorRow) => void
 }) {
   const filtered = useMemo(() => {
     let list = authors
@@ -158,7 +281,8 @@ function AuthorTable({
             return (
               <tr
                 key={author.author}
-                className="border-border border-b last:border-0 hover:bg-muted/30"
+                className="cursor-pointer border-border border-b last:border-0 focus-within:bg-muted/30 hover:bg-muted/30"
+                onClick={() => onAuthorClick(author)}
               >
                 <td
                   className={cn(
@@ -168,8 +292,17 @@ function AuthorTable({
                 >
                   {rank}
                 </td>
-                <td className="px-4 py-3 font-medium text-foreground">
-                  {author.author}
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    className="text-left font-medium text-foreground hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onAuthorClick(author)
+                    }}
+                  >
+                    {author.author}
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right text-muted-foreground">
                   {author.commits}
@@ -209,6 +342,7 @@ function BundlePanel({ bundle }: { bundle: BundleView }) {
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('score')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [selectedAuthor, setSelectedAuthor] = useState<AuthorRow | null>(null)
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -219,7 +353,7 @@ function BundlePanel({ bundle }: { bundle: BundleView }) {
     }
   }
 
-  const activeAuthors = useMemo(() => {
+  const activeAuthors = useMemo<AuthorRow[]>(() => {
     if (selectedTab === 'aggregate' && bundle.aggregate) {
       return bundle.aggregate.authors
     }
@@ -290,6 +424,12 @@ function BundlePanel({ bundle }: { bundle: BundleView }) {
         sortKey={sortKey}
         sortDir={sortDir}
         onSort={handleSort}
+        onAuthorClick={setSelectedAuthor}
+      />
+
+      <AuthorProvenanceModal
+        author={selectedAuthor}
+        onClose={() => setSelectedAuthor(null)}
       />
 
       {generatedAt && (
