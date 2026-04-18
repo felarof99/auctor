@@ -5,18 +5,30 @@ import type {
   ClassifyRequest,
   ClassifyResponse,
 } from '@auctor/shared/api-types'
+import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import { Hono } from 'hono'
-import { classifyWorkUnit } from '../classifier/agent'
-import { ClassificationCache } from '../classifier/cache'
+import { classifyWorkUnit as classifyWithBedrock } from '../classifier/agent'
+import {
+  buildClassificationCacheKey,
+  ClassificationCache,
+} from '../classifier/cache'
 
 const CACHE_DB = process.env.CACHE_DB || '/tmp/auctor-cache.sqlite'
 
 // Ensure the cache directory exists before opening SQLite.
 mkdirSync(dirname(CACHE_DB), { recursive: true })
 
-const cache = new ClassificationCache(CACHE_DB)
+const defaultCache = new ClassificationCache(CACHE_DB)
 
-export const classifyRoute = new Hono()
+type ClassifyWorkUnitFn = (
+  unit: WorkUnit,
+  repoPath: string,
+) => Promise<Classification>
+
+interface ClassifyRouteDependencies {
+  cache?: ClassificationCache
+  classifyWorkUnit?: ClassifyWorkUnitFn
+}
 
 async function resolveGitRepoPath(repoPath: string): Promise<string | null> {
   const proc = Bun.spawn(
@@ -31,53 +43,78 @@ async function resolveGitRepoPath(repoPath: string): Promise<string | null> {
   return stdout.trim()
 }
 
-classifyRoute.post('/classify', async (c) => {
-  const body = (await c.req.json()) as Partial<ClassifyRequest>
+function buildBedrockCacheKey(unit: WorkUnit): string {
+  return buildClassificationCacheKey({
+    unit,
+    backend: 'bedrock',
+    executor: null,
+    model: process.env.BEDROCK_MODEL_ID ?? null,
+    effort: null,
+    promptVersion: 'bedrock-v1',
+    skillBundleHash: null,
+  })
+}
 
-  if (!body.repo_path || typeof body.repo_path !== 'string') {
-    return c.json({ error: 'repo_path is required' }, 400)
-  }
+export function createClassifyRoute(
+  dependencies: ClassifyRouteDependencies = {},
+): Hono {
+  const route = new Hono()
+  const cache = dependencies.cache ?? defaultCache
+  const classifyWorkUnit = dependencies.classifyWorkUnit ?? classifyWithBedrock
 
-  if (!Array.isArray(body.work_units)) {
-    return c.json({ error: 'work_units is required' }, 400)
-  }
+  route.post('/classify', async (c) => {
+    const body = (await c.req.json()) as Partial<ClassifyRequest>
 
-  const repoPath = await resolveGitRepoPath(body.repo_path)
-  if (!repoPath) {
-    return c.json({ error: 'repo_path must point to a git repo' }, 400)
-  }
-
-  if (body.work_units.length === 0) {
-    return c.json({ classifications: [] } satisfies ClassifyResponse, 200)
-  }
-
-  const classifications: ClassifiedWorkUnit[] = []
-
-  for (const unit of body.work_units) {
-    const cached = cache.get(unit.id)
-    if (cached) {
-      classifications.push({ id: unit.id, classification: cached })
-      continue
+    if (!body.repo_path || typeof body.repo_path !== 'string') {
+      return c.json({ error: 'repo_path is required' }, 400)
     }
 
-    try {
-      const classification = await classifyWorkUnit(unit, repoPath)
-      cache.set(unit.id, classification)
-      classifications.push({ id: unit.id, classification })
-    } catch (err) {
-      console.warn(
-        `Classification failed for ${unit.id}, using default:`,
-        err instanceof Error ? err.message : err,
-      )
-      const fallback = {
-        type: 'feature' as const,
-        difficulty: 'medium' as const,
-        impact_score: 5,
-        reasoning: `Classification failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+    if (!Array.isArray(body.work_units)) {
+      return c.json({ error: 'work_units is required' }, 400)
+    }
+
+    const repoPath = await resolveGitRepoPath(body.repo_path)
+    if (!repoPath) {
+      return c.json({ error: 'repo_path must point to a git repo' }, 400)
+    }
+
+    if (body.work_units.length === 0) {
+      return c.json({ classifications: [] } satisfies ClassifyResponse, 200)
+    }
+
+    const classifications: ClassifiedWorkUnit[] = []
+
+    for (const unit of body.work_units) {
+      const cacheKey = buildBedrockCacheKey(unit)
+      const cached = cache.getByKey(cacheKey)
+      if (cached) {
+        classifications.push({ id: unit.id, classification: cached })
+        continue
       }
-      classifications.push({ id: unit.id, classification: fallback })
-    }
-  }
 
-  return c.json({ classifications } satisfies ClassifyResponse)
-})
+      try {
+        const classification = await classifyWorkUnit(unit, repoPath)
+        cache.setByKey(cacheKey, unit.id, 'bedrock', null, classification)
+        classifications.push({ id: unit.id, classification })
+      } catch (err) {
+        console.warn(
+          `Classification failed for ${unit.id}, using default:`,
+          err instanceof Error ? err.message : err,
+        )
+        const fallback = {
+          type: 'feature' as const,
+          difficulty: 'medium' as const,
+          impact_score: 5,
+          reasoning: `Classification failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        }
+        classifications.push({ id: unit.id, classification: fallback })
+      }
+    }
+
+    return c.json({ classifications } satisfies ClassifyResponse)
+  })
+
+  return route
+}
+
+export const classifyRoute = createClassifyRoute()
