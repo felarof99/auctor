@@ -35,6 +35,7 @@ export async function classifyWithLocalExecutors(
   const classifications = new Map<string, Classification>()
   let nextUnitIndex = 0
   let failed = false
+  let firstError: unknown
 
   async function worker(): Promise<void> {
     while (!failed) {
@@ -53,17 +54,30 @@ export async function classifyWithLocalExecutors(
         })
         classifications.set(workUnit.id, classification)
       } catch (error) {
-        failed = true
-        throw error
+        if (!failed) {
+          failed = true
+          firstError = error
+        }
+        return
       }
     }
   }
 
-  await Promise.all(
+  const workerResults = await Promise.allSettled(
     Array.from({ length: workerCount }, async () => {
       await worker()
     }),
   )
+
+  if (failed) {
+    throw firstError
+  }
+
+  for (const result of workerResults) {
+    if (result.status === 'rejected') {
+      throw result.reason
+    }
+  }
 
   return classifications
 }

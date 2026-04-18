@@ -47,6 +47,10 @@ function deferred<T>(): {
   return { promise, resolve, reject }
 }
 
+function nextTimerTurn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 describe('classifyWithLocalExecutors', () => {
   test('never exceeds maxParallel', async () => {
     const units = [
@@ -160,6 +164,63 @@ describe('classifyWithLocalExecutors', () => {
         executors: [executor],
       }),
     ).rejects.toThrow(error)
+  })
+
+  test('drains active classifications before rejecting after concurrent failure', async () => {
+    const error = new Error('unit-2 failed')
+    const unit1 = deferred<Classification>()
+    const unit2 = deferred<Classification>()
+    const calls: string[] = []
+    let settled = false
+    let observedError: unknown
+    const executor: LocalExecutorRuntime = {
+      type: 'claude',
+      async classify({ workUnit: unit }) {
+        calls.push(unit.id)
+
+        if (unit.id === 'unit-1') {
+          return unit1.promise
+        }
+        if (unit.id === 'unit-2') {
+          return unit2.promise
+        }
+
+        return classification(unit.id)
+      },
+    }
+
+    const result = classifyWithLocalExecutors({
+      repoPath,
+      workUnits: [workUnit('unit-1'), workUnit('unit-2'), workUnit('unit-3')],
+      maxParallel: 2,
+      executors: [executor],
+    })
+    const observed = result.then(
+      () => {
+        settled = true
+      },
+      (err: unknown) => {
+        settled = true
+        observedError = err
+      },
+    )
+
+    while (calls.length < 2) {
+      await Promise.resolve()
+    }
+
+    unit2.reject(error)
+    await nextTimerTurn()
+
+    expect(settled).toBe(false)
+    expect(calls).toEqual(['unit-1', 'unit-2'])
+
+    unit1.resolve(classification('unit-1'))
+    await observed
+
+    expect(settled).toBe(true)
+    expect(observedError).toBe(error)
+    expect(calls).toEqual(['unit-1', 'unit-2'])
   })
 
   test('empty executor list throws', async () => {
