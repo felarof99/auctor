@@ -70,7 +70,6 @@ function extractBalancedObjects(text: string): string[] {
     if (end === null) continue
 
     objects.push(text.slice(index, end + 1))
-    index = end
   }
 
   return objects

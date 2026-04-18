@@ -44,6 +44,22 @@ describe('parseClassificationJson', () => {
     expect(parseClassificationJson(text)).toEqual(sampleClassification)
   })
 
+  test('parses a valid classification nested inside an invalid wrapper object', () => {
+    const nestedClassification: Classification = {
+      ...sampleClassification,
+      reasoning: 'nested',
+    }
+    const text = [
+      'wrapper',
+      JSON.stringify({
+        metadata: { tokens: 12 },
+        classification: nestedClassification,
+      }),
+    ].join(' ')
+
+    expect(parseClassificationJson(text)).toEqual(nestedClassification)
+  })
+
   test('throws a validation error for invalid classification JSON', () => {
     const invalid = JSON.stringify({
       type: 'not-a-type',
