@@ -5,8 +5,13 @@ import type {
   ClassifyRequest,
   ClassifyResponse,
 } from '@auctor/shared/api-types'
-import type { Classification, WorkUnit } from '@auctor/shared/classification'
+import {
+  type Classification,
+  type WorkUnit,
+  WorkUnitTypeEnum,
+} from '@auctor/shared/classification'
 import { Hono } from 'hono'
+import { z } from 'zod'
 import {
   BedrockClassifierBackend,
   classifyWorkUnit as classifyWithBedrock,
@@ -31,6 +36,29 @@ const CACHE_DB = process.env.CACHE_DB || '/tmp/auctor-cache.sqlite'
 mkdirSync(dirname(CACHE_DB), { recursive: true })
 
 const defaultCache = new ClassificationCache(CACHE_DB)
+
+const WorkUnitSchema = z
+  .object({
+    id: z.string(),
+    kind: WorkUnitTypeEnum,
+    author: z.string(),
+    branch: z.string(),
+    date: z.string(),
+    commit_shas: z.array(z.string()),
+    commit_messages: z.array(z.string()),
+    diff: z.string(),
+    insertions: z.number(),
+    deletions: z.number(),
+    net: z.number(),
+  })
+  .strict()
+
+const ClassifyRequestSchema = z
+  .object({
+    repo_path: z.string().min(1),
+    work_units: z.array(WorkUnitSchema),
+  })
+  .strict()
 
 type ClassifyWorkUnitFn = (
   unit: WorkUnit,
@@ -86,7 +114,7 @@ export function createClassifyRoute(
     dependencies.createLocalBackend ?? createLocalAgentClassifierBackend
 
   route.post('/classify', async (c) => {
-    const body = (await c.req.json()) as Partial<ClassifyRequest>
+    const body = await c.req.json()
 
     return handleClassifyRequest({
       body,
@@ -104,7 +132,7 @@ export function createClassifyRoute(
 export const classifyRoute = createClassifyRoute()
 
 async function handleClassifyRequest(input: {
-  body: Partial<ClassifyRequest>
+  body: unknown
   cache: ClassificationCache
   classifyWorkUnit: ClassifyWorkUnitFn
   loadConfig: () => ClassifierConfig
@@ -113,15 +141,12 @@ async function handleClassifyRequest(input: {
   ) => Promise<LocalClassifierBackend>
   json: HonoJson
 }): Promise<Response> {
-  const { body } = input
-
-  if (!body.repo_path || typeof body.repo_path !== 'string') {
-    return input.json({ error: 'repo_path is required' }, 400)
+  const parsedRequest = parseClassifyRequest(input.body)
+  if (!parsedRequest.ok) {
+    return input.json({ error: parsedRequest.error }, 400)
   }
 
-  if (!Array.isArray(body.work_units)) {
-    return input.json({ error: 'work_units is required' }, 400)
-  }
+  const body = parsedRequest.data
 
   const repoPath = await resolveGitRepoPath(body.repo_path)
   if (!repoPath) {
@@ -302,3 +327,50 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 type HonoJson = (object: object, status?: 200 | 400 | 500) => Response
+
+function parseClassifyRequest(
+  body: unknown,
+): { ok: true; data: ClassifyRequest } | { ok: false; error: string } {
+  if (!isRecord(body)) {
+    return { ok: false, error: 'request body must be an object' }
+  }
+
+  const unknownKeys = Object.keys(body).filter(
+    (key) => key !== 'repo_path' && key !== 'work_units',
+  )
+  if (unknownKeys.length > 0) {
+    return {
+      ok: false,
+      error: `unknown top-level field: ${unknownKeys[0]}`,
+    }
+  }
+
+  if (!body.repo_path || typeof body.repo_path !== 'string') {
+    return { ok: false, error: 'repo_path is required' }
+  }
+
+  if (!Array.isArray(body.work_units)) {
+    return { ok: false, error: 'work_units is required' }
+  }
+
+  const parsed = ClassifyRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return { ok: false, error: classifyRequestError(parsed.error) }
+  }
+
+  return { ok: true, data: parsed.data }
+}
+
+function classifyRequestError(error: z.ZodError): string {
+  const issue = error.issues[0]
+  const topLevelPath = issue?.path[0]
+
+  if (topLevelPath === 'repo_path') return 'repo_path is required'
+  if (topLevelPath === 'work_units') return 'work_units contains invalid entry'
+
+  return 'request body is invalid'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}

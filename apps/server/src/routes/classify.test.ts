@@ -155,6 +155,55 @@ describe('POST /api/classify', () => {
     expect(json.error).toContain('git repo')
   })
 
+  test('returns 400 when request includes an unknown top-level field', async () => {
+    const repoPath = await mkGitRepo()
+    const res = await postClassify({
+      repo_path: repoPath,
+      repo: 'unexpected',
+      work_units: [],
+    })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toContain('unknown')
+  })
+
+  test('returns 400 for malformed work unit entries before calling classifier backend', async () => {
+    const repoPath = await mkGitRepo()
+    let configCalls = 0
+    let classifyCalls = 0
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => {
+        configCalls += 1
+        return { backend: 'bedrock', local: localConfig().local }
+      },
+      classifyWorkUnit: async () => {
+        classifyCalls += 1
+        return {
+          type: 'feature',
+          difficulty: 'medium',
+          impact_score: 5,
+          reasoning: 'should not classify malformed request',
+        }
+      },
+    })
+
+    const res = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [{}],
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toContain('work_units')
+    expect(configCalls).toBe(0)
+    expect(classifyCalls).toBe(0)
+  })
+
   test('returns 200 with empty classifications for empty work_units', async () => {
     const repoPath = await mkGitRepo()
     const res = await postClassify({ repo_path: repoPath, work_units: [] })
