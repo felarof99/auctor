@@ -165,13 +165,14 @@ async function analyzeSingleRepo(
 
   let classifications: Classification[]
   if (bundle.server_url) {
+    const classifierRequestUnits = buildClassifierRequestUnits(hydratedUnits)
     const response = await classifyWorkUnits(
       bundle.server_url,
       repo.path,
-      hydratedUnits,
+      classifierRequestUnits,
     )
     classifications = buildClassificationsForUnits(
-      hydratedUnits,
+      classifierRequestUnits,
       response.classifications,
     )
   } else {
@@ -234,6 +235,34 @@ export function buildClassificationMap(
     map.set(item.id, item.classification)
   }
   return map
+}
+
+export function buildClassifierRequestUnits(units: WorkUnit[]): WorkUnit[] {
+  const idCounts = new Map<string, number>()
+  for (const unit of units) {
+    idCounts.set(unit.id, (idCounts.get(unit.id) ?? 0) + 1)
+  }
+
+  const usedIds = new Set(
+    units.filter((unit) => idCounts.get(unit.id) === 1).map((unit) => unit.id),
+  )
+
+  return units.map((unit, index) => {
+    if (idCounts.get(unit.id) === 1) {
+      return unit
+    }
+
+    const baseId = `${unit.id}::classifier-${index}`
+    let requestId = baseId
+    let collisionIndex = 1
+    while (usedIds.has(requestId)) {
+      requestId = `${baseId}-${collisionIndex}`
+      collisionIndex += 1
+    }
+    usedIds.add(requestId)
+
+    return { ...unit, id: requestId }
+  })
 }
 
 export function buildClassificationsForUnits(

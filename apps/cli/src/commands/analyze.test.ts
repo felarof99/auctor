@@ -4,6 +4,7 @@ import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import {
   buildClassificationMap,
   buildClassificationsForUnits,
+  buildClassifierRequestUnits,
   buildConsideredItemsForUnit,
 } from './analyze'
 
@@ -196,5 +197,73 @@ describe('buildClassificationsForUnits', () => {
     expect(() => buildClassificationsForUnits(units, returned)).toThrow(
       'Classification response mismatch at index 1: expected work unit unit-2 but received unit-3',
     )
+  })
+})
+
+describe('buildClassifierRequestUnits', () => {
+  test('uniquifies duplicate ids before classification while preserving order and content', () => {
+    const units = [
+      makeUnit({
+        id: 'shared-sha',
+        kind: 'branch-day',
+        commit_messages: ['branch-day'],
+      }),
+      makeUnit({
+        id: 'shared-sha',
+        kind: 'pr',
+        commit_messages: ['pr'],
+      }),
+      makeUnit({ id: 'unique-sha', commit_messages: ['unique'] }),
+    ]
+
+    const requestUnits = buildClassifierRequestUnits(units)
+
+    expect(requestUnits.map((unit) => unit.id)).toEqual([
+      'shared-sha::classifier-0',
+      'shared-sha::classifier-1',
+      'unique-sha',
+    ])
+    expect(requestUnits.map(({ id: _id, ...unit }) => unit)).toEqual(
+      units.map(({ id: _id, ...unit }) => unit),
+    )
+    expect(units.map((unit) => unit.id)).toEqual([
+      'shared-sha',
+      'shared-sha',
+      'unique-sha',
+    ])
+  })
+
+  test('allows duplicate source units to receive distinct ordered classifications without collapse', () => {
+    const units = [
+      makeUnit({ id: 'shared-sha', kind: 'branch-day' }),
+      makeUnit({ id: 'shared-sha', kind: 'pr' }),
+    ]
+    const requestUnits = buildClassifierRequestUnits(units)
+    const first = makeClassification({
+      type: 'feature',
+      reasoning: 'branch-day result',
+    })
+    const second = makeClassification({
+      type: 'bugfix',
+      reasoning: 'pr result',
+    })
+    const returned: ClassifiedWorkUnit[] = [
+      { id: requestUnits[0].id, classification: first },
+      { id: requestUnits[1].id, classification: second },
+    ]
+
+    expect(buildClassificationsForUnits(requestUnits, returned)).toEqual([
+      first,
+      second,
+    ])
+  })
+
+  test('leaves unique ids unchanged', () => {
+    const units = [makeUnit({ id: 'unit-1' }), makeUnit({ id: 'unit-2' })]
+
+    expect(buildClassifierRequestUnits(units).map((unit) => unit.id)).toEqual([
+      'unit-1',
+      'unit-2',
+    ])
   })
 })
