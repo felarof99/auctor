@@ -40,7 +40,7 @@ const defaultCache = new ClassificationCache(CACHE_DB)
 
 const WorkUnitSchema = z
   .object({
-    id: z.string(),
+    id: z.string().min(1),
     kind: WorkUnitTypeEnum,
     author: z.string(),
     branch: z.string(),
@@ -259,9 +259,14 @@ async function classifyWithLocalBackend(input: {
     input.workUnits.length,
   )
   const missing: { index: number; unit: WorkUnit; cacheKey: string }[] = []
+  const repoContext = await buildLocalRepoCacheContext(input.repoPath)
 
   input.workUnits.forEach((unit, index) => {
-    const cacheKey = buildLocalCacheKey(unit, input.backend.cacheContext)
+    const cacheKey = buildLocalCacheKey(
+      unit,
+      input.backend.cacheContext,
+      repoContext,
+    )
     const cached = input.cache.getByKey(cacheKey)
 
     if (cached) {
@@ -316,6 +321,7 @@ async function classifyWithLocalBackend(input: {
 function buildLocalCacheKey(
   unit: WorkUnit,
   context: LocalAgentCacheContext,
+  repoContext: LocalRepoCacheContext,
 ): string {
   return buildClassificationCacheKey({
     unit,
@@ -325,7 +331,36 @@ function buildLocalCacheKey(
     effort: context.effort,
     promptVersion: context.promptVersion,
     skillBundleHash: context.skillBundleHash,
+    repoContext,
   })
+}
+
+interface LocalRepoCacheContext {
+  path: string
+  headSha: string | null
+}
+
+async function buildLocalRepoCacheContext(
+  repoPath: string,
+): Promise<LocalRepoCacheContext> {
+  return {
+    path: repoPath,
+    headSha: await resolveGitHead(repoPath),
+  }
+}
+
+async function resolveGitHead(repoPath: string): Promise<string | null> {
+  const proc = Bun.spawn(
+    ['git', '-C', repoPath, 'rev-parse', '--verify', 'HEAD'],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [stdout, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    proc.exited,
+  ])
+  if (code !== 0) return null
+
+  return stdout.trim() || null
 }
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -365,7 +400,7 @@ function parseClassifyRequest(
   }
 
   const duplicateId = findDuplicateWorkUnitId(parsed.data.work_units)
-  if (duplicateId) {
+  if (duplicateId !== null) {
     return { ok: false, error: `duplicate work unit id: ${duplicateId}` }
   }
 

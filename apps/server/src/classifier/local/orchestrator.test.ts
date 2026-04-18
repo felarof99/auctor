@@ -282,4 +282,29 @@ describe('classifyWithLocalExecutors', () => {
 
     expect(calls).toBe(0)
   })
+
+  test('duplicate blank work unit ids throw before classification starts', async () => {
+    let calls = 0
+    const executor: LocalExecutorRuntime = {
+      type: 'claude',
+      async classify() {
+        calls += 1
+        return classification('unused')
+      },
+    }
+
+    await expect(
+      classifyWithLocalExecutors({
+        repoPath,
+        workUnits: [
+          { ...workUnit('unit-1'), id: '' },
+          { ...workUnit('unit-2'), id: '' },
+        ],
+        maxParallel: 2,
+        executors: [executor],
+      }),
+    ).rejects.toThrow('Duplicate local classifier work unit id')
+
+    expect(calls).toBe(0)
+  })
 })

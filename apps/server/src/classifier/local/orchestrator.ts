@@ -29,7 +29,7 @@ export async function classifyWithLocalExecutors(
   }
 
   const duplicateId = findDuplicateWorkUnitId(input.workUnits)
-  if (duplicateId) {
+  if (duplicateId !== null) {
     throw new Error(`Duplicate local classifier work unit id: ${duplicateId}`)
   }
 

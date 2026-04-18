@@ -259,6 +259,31 @@ describe('POST /api/classify', () => {
     expect(classifyCalls).toBe(0)
   })
 
+  test('returns 400 for blank work unit ids before calling classifier backend', async () => {
+    const repoPath = await mkGitRepo()
+    let configCalls = 0
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => {
+        configCalls += 1
+        return { backend: 'bedrock', local: localConfig().local }
+      },
+    })
+
+    const res = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [workUnit({ id: '' })],
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toContain('work_units')
+    expect(configCalls).toBe(0)
+  })
+
   test('returns 200 with empty classifications for empty work_units', async () => {
     const repoPath = await mkGitRepo()
     const res = await postClassify({ repo_path: repoPath, work_units: [] })
@@ -381,6 +406,66 @@ describe('POST /api/classify', () => {
       freshClassification,
     )
     expect(classifyCalls).toBe(1)
+  })
+
+  test('does not reuse local-agent cached classifications across repo paths', async () => {
+    const firstRepoPath = await mkGitRepo()
+    const secondRepoPath = await mkGitRepo()
+    let backendCalls = 0
+    const unit = workUnit()
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => localConfig(),
+      createLocalBackend: async () => ({
+        cacheContext: {
+          backend: 'local-agent',
+          executor: 'executors:hash-a',
+          model: null,
+          effort: null,
+          promptVersion: 'local-agent-v1',
+          skillBundleHash: 'skill-hash-a',
+        },
+        async classifyMany({ repoPath, workUnits }) {
+          backendCalls += 1
+          return new Map(
+            workUnits.map((workUnit) => [
+              workUnit.id,
+              {
+                type: 'feature',
+                difficulty: 'medium',
+                impact_score: 5,
+                reasoning: repoPath,
+              } satisfies Classification,
+            ]),
+          )
+        },
+      }),
+    })
+
+    const first = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: firstRepoPath,
+        work_units: [unit],
+      }),
+    })
+    const second = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: secondRepoPath,
+        work_units: [unit],
+      }),
+    })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    const firstReasoning = (await first.json()).classifications[0]
+      .classification.reasoning
+    const secondReasoning = (await second.json()).classifications[0]
+      .classification.reasoning
+    expect(firstReasoning).not.toBe(secondReasoning)
+    expect(backendCalls).toBe(2)
   })
 
   test('selects local-agent backend and returns classifications in request order', async () => {

@@ -16,6 +16,10 @@ export interface ClassificationCacheKeyInput {
   effort?: string | null
   promptVersion: string
   skillBundleHash?: string | null
+  repoContext?: {
+    path: string
+    headSha: string | null
+  } | null
 }
 
 function stableJsonStringify(value: unknown): string {
@@ -57,6 +61,7 @@ export function buildClassificationCacheKey(
     effort: input.effort ?? null,
     promptVersion: input.promptVersion,
     skillBundleHash: input.skillBundleHash ?? null,
+    repoContext: input.repoContext ?? null,
   }
 
   return createHash('sha256').update(stableJsonStringify(payload)).digest('hex')

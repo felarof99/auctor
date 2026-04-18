@@ -104,6 +104,27 @@ describe('buildClassificationCacheKey', () => {
     expect(second).not.toBe(first)
   })
 
+  test('changes when local repo context changes', () => {
+    const first = buildClassificationCacheKey(
+      baseCacheKeyInput({
+        repoContext: { path: '/repo-a', headSha: 'abc123' },
+      }),
+    )
+    const differentPath = buildClassificationCacheKey(
+      baseCacheKeyInput({
+        repoContext: { path: '/repo-b', headSha: 'abc123' },
+      }),
+    )
+    const differentHead = buildClassificationCacheKey(
+      baseCacheKeyInput({
+        repoContext: { path: '/repo-a', headSha: 'def456' },
+      }),
+    )
+
+    expect(differentPath).not.toBe(first)
+    expect(differentHead).not.toBe(first)
+  })
+
   test('is stable for equivalent input object key ordering', () => {
     const first = buildClassificationCacheKey(baseCacheKeyInput())
     const second = buildClassificationCacheKey({
