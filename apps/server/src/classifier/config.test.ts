@@ -2,9 +2,25 @@ import { describe, expect, test } from 'bun:test'
 import { loadClassifierConfig } from './config'
 
 describe('loadClassifierConfig', () => {
-  test('defaults to bedrock backend', () => {
+  test('defaults classifier config', () => {
     const config = loadClassifierConfig({})
+
     expect(config.backend).toBe('bedrock')
+    expect(config.local.executors).toEqual([
+      {
+        type: 'claude',
+        command: 'claude',
+        maxTurns: 2,
+        skipPermissions: true,
+      },
+    ])
+    expect(config.local.maxParallel).toBe(4)
+    expect(config.local.timeoutMs).toBe(240000)
+    expect(config.local.repairAttempts).toBe(1)
+    expect(config.local.skillPath).toBe(
+      './apps/server/skills/auctor-classifier',
+    )
+    expect(config.local.extraSkillPaths).toEqual([])
   })
 
   test('clamps local parallelism to 1 through 10', () => {
