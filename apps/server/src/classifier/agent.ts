@@ -11,7 +11,7 @@ import type { ClassifierBackend } from './backend'
 import { buildClassificationPrompt } from './prompt'
 
 const REGION = process.env.AWS_REGION ?? 'us-east-1'
-const MODEL_ID =
+export const BEDROCK_MODEL_ID =
   process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-haiku-4-5-20251001'
 
 const client = new BedrockRuntimeClient({ region: REGION })
@@ -43,7 +43,7 @@ export async function classifyWorkUnit(
 
   // Call Bedrock Converse with structured JSON output
   const command = new ConverseCommand({
-    modelId: MODEL_ID,
+    modelId: BEDROCK_MODEL_ID,
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens: 1024, temperature: 0 },
     outputConfig: {

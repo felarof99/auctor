@@ -75,6 +75,26 @@ describe('buildClassificationCacheKey', () => {
     expect(second).not.toBe(first)
   })
 
+  test('changes when classification prompt inputs change', () => {
+    const first = buildClassificationCacheKey(baseCacheKeyInput())
+    const promptInputChanges: WorkUnit[] = [
+      baseWorkUnit({ author: 'other@example.com' }),
+      baseWorkUnit({ branch: 'main' }),
+      baseWorkUnit({ date: '2026-04-19' }),
+      baseWorkUnit({ kind: 'pr' }),
+      baseWorkUnit({ commit_messages: ['fix: different intent'] }),
+      baseWorkUnit({ insertions: 99 }),
+      baseWorkUnit({ deletions: 99 }),
+      baseWorkUnit({ net: 0 }),
+    ]
+
+    for (const unit of promptInputChanges) {
+      expect(buildClassificationCacheKey(baseCacheKeyInput({ unit }))).not.toBe(
+        first,
+      )
+    }
+  })
+
   test('changes when skill bundle hash changes', () => {
     const first = buildClassificationCacheKey(baseCacheKeyInput())
     const second = buildClassificationCacheKey(

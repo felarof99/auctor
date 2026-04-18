@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Classification } from '@auctor/shared/classification'
 import { Hono } from 'hono'
-import { ClassificationCache } from '../classifier/cache'
+import {
+  buildClassificationCacheKey,
+  ClassificationCache,
+} from '../classifier/cache'
 import type { ClassifierConfig } from '../classifier/config'
 import { classifyRoute, createClassifyRoute } from './classify'
 
@@ -325,6 +328,59 @@ describe('POST /api/classify', () => {
       classifications[1],
     )
     expect(classifyCalls).toBe(2)
+  })
+
+  test('does not reuse stale Bedrock cache entries keyed without the default model', async () => {
+    const repoPath = await mkGitRepo()
+    let classifyCalls = 0
+    const staleClassification: Classification = {
+      type: 'chore',
+      difficulty: 'trivial',
+      impact_score: 1,
+      reasoning: 'stale null-model cache entry',
+    }
+    const freshClassification: Classification = {
+      type: 'feature',
+      difficulty: 'medium',
+      impact_score: 7,
+      reasoning: 'fresh default-model classification',
+    }
+    const unit = workUnit()
+    const { app: testApp, cache } = createTestRoute(async () => {
+      classifyCalls += 1
+      return freshClassification
+    })
+    const staleNullModelKey = buildClassificationCacheKey({
+      unit,
+      backend: 'bedrock',
+      executor: null,
+      model: null,
+      effort: null,
+      promptVersion: 'bedrock-v1',
+      skillBundleHash: null,
+    })
+    cache.setByKey(
+      staleNullModelKey,
+      unit.id,
+      'bedrock',
+      null,
+      staleClassification,
+    )
+
+    const res = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [unit],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).classifications[0].classification).toEqual(
+      freshClassification,
+    )
+    expect(classifyCalls).toBe(1)
   })
 
   test('selects local-agent backend and returns classifications in request order', async () => {

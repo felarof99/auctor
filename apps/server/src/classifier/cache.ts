@@ -38,9 +38,19 @@ export function buildClassificationCacheKey(
   input: ClassificationCacheKeyInput,
 ): string {
   const payload = {
-    unitId: input.unit.id,
-    commitShas: input.unit.commit_shas,
-    diffHash: createHash('sha256').update(input.unit.diff).digest('hex'),
+    unit: {
+      id: input.unit.id,
+      kind: input.unit.kind,
+      author: input.unit.author,
+      branch: input.unit.branch,
+      date: input.unit.date,
+      commitShas: input.unit.commit_shas,
+      commitMessages: input.unit.commit_messages,
+      diffHash: createHash('sha256').update(input.unit.diff).digest('hex'),
+      insertions: input.unit.insertions,
+      deletions: input.unit.deletions,
+      net: input.unit.net,
+    },
     backend: input.backend,
     executor: input.executor ?? null,
     model: input.model ?? null,

@@ -13,6 +13,7 @@ import {
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
+  BEDROCK_MODEL_ID,
   BedrockClassifierBackend,
   classifyWorkUnit as classifyWithBedrock,
 } from '../classifier/agent'
@@ -96,7 +97,7 @@ function buildBedrockCacheKey(unit: WorkUnit): string {
     unit,
     backend: 'bedrock',
     executor: null,
-    model: process.env.BEDROCK_MODEL_ID ?? null,
+    model: BEDROCK_MODEL_ID,
     effort: null,
     promptVersion: 'bedrock-v1',
     skillBundleHash: null,
