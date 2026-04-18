@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { WorkUnit } from '@auctor/shared/classification'
-import { buildClassificationPrompt } from './prompt'
+import {
+  buildClassificationPrompt,
+  buildLocalAgentClassificationPrompt,
+  LOCAL_CLASSIFIER_PROMPT_VERSION,
+} from './prompt'
 
 const sampleUnit: WorkUnit = {
   id: 'wu-123',
@@ -58,5 +62,20 @@ describe('buildClassificationPrompt', () => {
 
     expect(prompt).toContain('impact_score')
     expect(prompt).toContain('reasoning')
+  })
+})
+
+describe('buildLocalAgentClassificationPrompt', () => {
+  test('wraps classification prompt for local agent execution', () => {
+    const prompt = buildLocalAgentClassificationPrompt(sampleUnit)
+
+    expect(prompt).toContain('Use the auctor-classifier skill')
+    expect(prompt).toContain('wu-123')
+    expect(prompt).toContain('abc123')
+    expect(prompt).toContain('```diff')
+  })
+
+  test('exports a string prompt version for cache keys', () => {
+    expect(LOCAL_CLASSIFIER_PROMPT_VERSION).toBe('local-agent-v1')
   })
 })

@@ -7,6 +7,7 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime'
+import type { ClassifierBackend } from './backend'
 import { buildClassificationPrompt } from './prompt'
 
 const REGION = process.env.AWS_REGION ?? 'us-east-1'
@@ -76,4 +77,26 @@ export async function classifyWorkUnit(
   }
 
   return parsed.data
+}
+
+type ClassifyWorkUnitFn = typeof classifyWorkUnit
+
+export class BedrockClassifierBackend implements ClassifierBackend {
+  constructor(
+    private readonly classifyOne: ClassifyWorkUnitFn = classifyWorkUnit,
+  ) {}
+
+  async classifyMany(input: {
+    repoPath: string
+    workUnits: WorkUnit[]
+  }): Promise<Map<string, Classification>> {
+    const classifications = new Map<string, Classification>()
+
+    for (const unit of input.workUnits) {
+      const classification = await this.classifyOne(unit, input.repoPath)
+      classifications.set(unit.id, classification)
+    }
+
+    return classifications
+  }
 }

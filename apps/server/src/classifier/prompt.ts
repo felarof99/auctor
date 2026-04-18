@@ -1,5 +1,7 @@
 import type { WorkUnit } from '@auctor/shared/classification'
 
+export const LOCAL_CLASSIFIER_PROMPT_VERSION = 'local-agent-v1'
+
 export function buildClassificationPrompt(unit: WorkUnit): string {
   const metadata = [
     `- **Author:** ${unit.author}`,
@@ -70,4 +72,25 @@ Return your classification as JSON matching this schema:
 }
 \`\`\`
 `
+}
+
+export function buildLocalAgentClassificationPrompt(unit: WorkUnit): string {
+  const commitShas =
+    unit.commit_shas.length > 0
+      ? unit.commit_shas.map((sha) => `- ${sha}`).join('\n')
+      : '- none'
+
+  return `Use the auctor-classifier skill to classify this work unit.
+
+Assume cwd is the local repo. You may inspect repository files if needed, but classify only the work unit provided below.
+
+Return only valid classification JSON. Do not include markdown fences, commentary, or any text outside the JSON object.
+
+## Work Unit Context
+
+- **ID:** ${unit.id}
+- **Commit SHAs:**
+${commitShas}
+
+${buildClassificationPrompt(unit)}`
 }
