@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { syncDashboardData } from './sync-data'
@@ -18,23 +24,33 @@ describe('syncDashboardData', () => {
   })
 
   afterEach(() => {
-    // tmp dirs cleaned up by OS; explicit cleanup optional
+    rmSync(rootDir, { recursive: true, force: true })
+    rmSync(outDir, { recursive: true, force: true })
   })
 
-  function makeResultFile(bundle: string, repo: string, data?: unknown): void {
-    const resultsDir = join(rootDir, 'configs', bundle, '.results')
+  function makeResultFile(
+    bundle: string,
+    repo: string,
+    data?: unknown,
+    stamp = 'apr-18-09-42',
+  ): string {
+    const resultsDir = join(rootDir, 'out', bundle, 'results')
     mkdirSync(resultsDir, { recursive: true })
-    writeJson(join(resultsDir, `${repo}.json`), data ?? { bundle, repo })
+    const path = join(resultsDir, `${stamp}-${repo}.json`)
+    writeJson(path, data ?? { bundle, repo, authors: [] })
+    return path
   }
 
   it('copies per-repo files with bundle__repo naming', async () => {
     makeResultFile('browseros', 'browseros-main', {
       bundle: 'browseros',
       repo: 'browseros-main',
+      authors: [],
     })
     makeResultFile('browseros', 'browseros-docs', {
       bundle: 'browseros',
       repo: 'browseros-docs',
+      authors: [],
     })
 
     await syncDashboardData({ rootDir, outDir })
@@ -44,8 +60,16 @@ describe('syncDashboardData', () => {
     const mainData = JSON.parse(readFileSync(mainPath, 'utf8'))
     const docsData = JSON.parse(readFileSync(docsPath, 'utf8'))
 
-    expect(mainData).toEqual({ bundle: 'browseros', repo: 'browseros-main' })
-    expect(docsData).toEqual({ bundle: 'browseros', repo: 'browseros-docs' })
+    expect(mainData).toEqual({
+      bundle: 'browseros',
+      repo: 'browseros-main',
+      authors: [],
+    })
+    expect(docsData).toEqual({
+      bundle: 'browseros',
+      repo: 'browseros-docs',
+      authors: [],
+    })
   })
 
   it('writes manifest.json with sorted bundles and repos', async () => {
@@ -68,10 +92,9 @@ describe('syncDashboardData', () => {
 
   it('skips microscope files', async () => {
     makeResultFile('browseros', 'browseros-main')
-    // microscope file — should be skipped
-    const resultsDir = join(rootDir, 'configs', 'browseros', '.results')
+    const resultsDir = join(rootDir, 'out', 'browseros', 'results')
     writeJson(
-      join(resultsDir, 'browseros-microscope-alice-20260417-1030.json'),
+      join(resultsDir, 'apr-18-09-42-browseros-microscope-alice.json'),
       { type: 'microscope' },
     )
 
@@ -85,6 +108,46 @@ describe('syncDashboardData', () => {
     // microscope file must not appear in outDir
     const outFiles = Bun.spawnSync(['ls', outDir]).stdout.toString()
     expect(outFiles).not.toContain('microscope')
+  })
+
+  it('uses the latest timestamped report per bundle and repo', async () => {
+    makeResultFile(
+      'browseros',
+      'browseros-main',
+      { bundle: 'browseros', repo: 'browseros-main', authors: [{ old: true }] },
+      'apr-18-09-42',
+    )
+    makeResultFile(
+      'browseros',
+      'browseros-main',
+      { bundle: 'browseros', repo: 'browseros-main', authors: [{ new: true }] },
+      'apr-18-09-43',
+    )
+
+    await syncDashboardData({ rootDir, outDir })
+
+    const mainData = JSON.parse(
+      readFileSync(join(outDir, 'browseros__browseros-main.json'), 'utf8'),
+    )
+    expect(mainData.authors).toEqual([{ new: true }])
+  })
+
+  it('can sync a selected bundle result root', async () => {
+    makeResultFile('browseros', 'browseros-main')
+    makeResultFile('other', 'other-main')
+
+    await syncDashboardData({
+      rootDir,
+      outDir,
+      resultsRoot: 'out/browseros',
+    })
+
+    const manifest = JSON.parse(
+      readFileSync(join(outDir, 'manifest.json'), 'utf8'),
+    )
+    expect(manifest).toEqual({
+      bundles: [{ name: 'browseros', repos: ['browseros-main'] }],
+    })
   })
 
   it('removes stale files from outDir', async () => {

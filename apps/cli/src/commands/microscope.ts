@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import * as clack from '@clack/prompts'
 import fuzzysort from 'fuzzysort'
 import { loadBundle } from '../bundle'
@@ -11,12 +11,17 @@ import {
   type MicroscopeCommit,
   renderMicroscope,
 } from '../microscope-output'
+import {
+  buildMicroscopeResultFilename,
+  getResultsDir,
+  resolveBundleConfigPath,
+} from '../paths'
 
 export async function microscope(
   configPath: string,
   timeWindow: string,
 ): Promise<void> {
-  const absoluteConfigPath = resolve(configPath)
+  const absoluteConfigPath = resolveBundleConfigPath(configPath)
   const bundle = await loadBundle(absoluteConfigPath)
 
   if (bundle.engineers.length === 0) {
@@ -66,16 +71,11 @@ export async function microscope(
   )
   console.log(`\n${output}`)
 
-  const resultsDir = join(dirname(absoluteConfigPath), '.results')
+  const resultsDir = getResultsDir(absoluteConfigPath)
   mkdirSync(resultsDir, { recursive: true })
-  const stamp = new Date()
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\..*/, '')
-    .replace('T', '-')
   const reportPath = join(
     resultsDir,
-    `${bundle.name}-microscope-${username}-${stamp}.json`,
+    buildMicroscopeResultFilename(bundle.name, username),
   )
   const report = buildMicroscopeReport({
     username,
