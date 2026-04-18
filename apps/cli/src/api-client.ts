@@ -7,19 +7,19 @@ import type { WorkUnit } from '@auctor/shared/classification'
 const DEFAULT_SERVER_URL = 'http://localhost:3001'
 
 export function buildClassifyPayload(
-  repoUrl: string,
+  repoPath: string,
   workUnits: WorkUnit[],
 ): ClassifyRequest {
-  return { repo_url: repoUrl, work_units: workUnits }
+  return { repo_path: repoPath, work_units: workUnits }
 }
 
 export async function classifyWorkUnits(
   serverUrl: string | undefined,
-  repoUrl: string,
+  repoPath: string,
   workUnits: WorkUnit[],
 ): Promise<ClassifyResponse> {
   const base = serverUrl || DEFAULT_SERVER_URL
-  const payload = buildClassifyPayload(repoUrl, workUnits)
+  const payload = buildClassifyPayload(repoPath, workUnits)
 
   const response = await fetch(`${base}/api/classify`, {
     method: 'POST',

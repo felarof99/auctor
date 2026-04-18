@@ -1,7 +1,7 @@
 import type { Classification, WorkUnit } from './classification'
 
 export interface ClassifyRequest {
-  repo_url: string
+  repo_path: string
   work_units: WorkUnit[]
 }
 
