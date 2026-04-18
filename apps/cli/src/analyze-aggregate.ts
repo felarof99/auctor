@@ -2,6 +2,15 @@ import type { AuthorConsideredItems } from '@auctor/shared/report'
 import { calculateAuthorScore, computeDailyScores } from './scoring'
 import type { AuthorStats } from './types'
 
+export interface PerRepoCommitDetail {
+  repo: string
+  sha: string
+  branch?: string
+  message: string
+  insertions: number
+  deletions: number
+}
+
 export interface PerRepoScoredUnit {
   author: string
   repoName: string
@@ -11,6 +20,7 @@ export interface PerRepoScoredUnit {
   isPr: boolean
   insertions: number
   deletions: number
+  commitDetails?: PerRepoCommitDetail[]
   considered: AuthorConsideredItems
 }
 
@@ -21,6 +31,7 @@ interface AuthorBucket {
   insertions: number
   deletions: number
   considered: AuthorConsideredItems
+  seenCommitKeys: Set<string>
 }
 
 export function aggregateBundleResults(
@@ -38,10 +49,45 @@ export function aggregateBundleResults(
       insertions: 0,
       deletions: 0,
       considered: { commits: [], prs: [] },
+      seenCommitKeys: new Set<string>(),
     }
+
+    if (!u.isPr && u.commitDetails && u.commitDetails.length > 0) {
+      const uniqueDetails = u.commitDetails.filter((detail) => {
+        const key = commitKey(detail)
+        if (b.seenCommitKeys.has(key)) return false
+        b.seenCommitKeys.add(key)
+        return true
+      })
+      b.scoredUnits.push({
+        date: u.date,
+        score: scaledScore(u.score, u.commitDetails, uniqueDetails),
+      })
+      b.commits += uniqueDetails.length
+      b.insertions += uniqueDetails.reduce((sum, d) => sum + d.insertions, 0)
+      b.deletions += uniqueDetails.reduce((sum, d) => sum + d.deletions, 0)
+      b.considered.commits.push(
+        ...uniqueDetails.map(({ repo, branch, sha, message }) => ({
+          repo,
+          ...(branch ? { branch } : {}),
+          sha,
+          message,
+        })),
+      )
+      buckets.set(u.author, b)
+      continue
+    }
+
+    if (u.isPr) {
+      b.scoredUnits.push({ date: u.date, score: u.score })
+      b.prs += 1
+      b.considered.prs.push(...u.considered.prs)
+      buckets.set(u.author, b)
+      continue
+    }
+
     b.scoredUnits.push({ date: u.date, score: u.score })
     b.commits += u.commits
-    if (u.isPr) b.prs += 1
     b.insertions += u.insertions
     b.deletions += u.deletions
     b.considered.commits.push(...u.considered.commits)
@@ -65,4 +111,26 @@ export function aggregateBundleResults(
       considered: b.considered,
     }))
     .sort((a, b) => b.score - a.score)
+}
+
+function commitKey(detail: PerRepoCommitDetail): string {
+  return `${detail.repo}::${detail.sha}`
+}
+
+function absNetLoc(detail: PerRepoCommitDetail): number {
+  return Math.abs(detail.insertions - detail.deletions)
+}
+
+function scaledScore(
+  score: number,
+  details: PerRepoCommitDetail[],
+  uniqueDetails: PerRepoCommitDetail[],
+): number {
+  if (details.length === 0) return score
+  const totalWeight = details.reduce((sum, d) => sum + absNetLoc(d), 0)
+  if (totalWeight > 0) {
+    const uniqueWeight = uniqueDetails.reduce((sum, d) => sum + absNetLoc(d), 0)
+    return score * (uniqueWeight / totalWeight)
+  }
+  return score * (uniqueDetails.length / details.length)
 }

@@ -23,7 +23,7 @@ Deduplicate commit contributions by `repo::sha` inside each author bucket. If th
 
 Do not dedupe across different authors. If the same SHA appears under two resolved authors, keep both records because that indicates an identity resolution issue that should not be hidden by aggregation.
 
-PRs remain separate signals. A squash commit with a subject like `fix: thing (#749)` may contribute one commit and one PR, but duplicate branch observations of that same SHA should not inflate commit totals.
+PRs remain separate signals. A squash commit with a subject like `fix: thing (#749)` may contribute one commit and one PR, but the PR unit should not add a second commit or duplicate LOC contribution.
 
 ## Data Flow
 
@@ -57,6 +57,7 @@ For PR units, preserve current behavior:
 1. Increment PR count once per PR unit.
 2. Add PR provenance.
 3. Add the full PR unit score.
+4. Do not add PR unit `commits`, `insertions`, or `deletions` to commit/LOC totals; those are counted through branch-day commit details.
 
 ## Score Scaling
 
@@ -92,7 +93,7 @@ The existing dashboard branch column will naturally show the primary branch for 
 - Duplicate SHA with different LOC stats: first observation wins. The same SHA should normally have identical stats; a mismatch suggests unusual Git history or parser behavior.
 - Duplicate SHA with different messages: first observation wins.
 - Duplicate SHA with different branches: first branch wins for the current `branch` field.
-- PR unit commit SHA also appears as a branch-day commit: count both signals once, matching the existing PR + commit scoring model.
+- PR unit commit SHA also appears as a branch-day commit: count one commit signal and one PR signal, but do not add duplicate commit/LOC totals from the PR unit.
 
 ## Tests
 

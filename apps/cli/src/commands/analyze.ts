@@ -5,6 +5,7 @@ import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import type { AuthorConsideredItems, RepoReport } from '@auctor/shared/report'
 import {
   aggregateBundleResults,
+  type PerRepoCommitDetail,
   type PerRepoScoredUnit,
 } from '../analyze-aggregate'
 import { loadBundle } from '../bundle'
@@ -143,6 +144,12 @@ async function analyzeSingleRepo(
   commits = commits.filter((commit) => engineerSet.has(commit.author))
   if (commits.length === 0) return []
 
+  const commitByBranchAndSha = new Map(
+    commits.map((commit) => [
+      `${commit.branch ?? 'unknown'}::${commit.sha}`,
+      commit,
+    ]),
+  )
   const branchDayUnits = extractBranchDayUnits(commits)
   const prUnits = extractPrUnits(commits)
   const shellUnits = [...branchDayUnits, ...prUnits]
@@ -183,11 +190,35 @@ async function analyzeSingleRepo(
       isPr: unit.kind === 'pr',
       insertions: unit.insertions,
       deletions: unit.deletions,
+      commitDetails: buildCommitDetailsForUnit(
+        repo.name,
+        unit,
+        commitByBranchAndSha,
+      ),
       considered: buildConsideredItemsForUnit(repo.name, unit),
     })
   }
 
   return scored
+}
+
+function buildCommitDetailsForUnit(
+  repoName: string,
+  unit: WorkUnit,
+  commitByBranchAndSha: Map<string, Commit>,
+): PerRepoCommitDetail[] {
+  if (unit.kind === 'pr') return []
+  return unit.commit_shas.map((sha, i) => {
+    const commit = commitByBranchAndSha.get(`${unit.branch}::${sha}`)
+    return {
+      repo: repoName,
+      branch: unit.branch,
+      sha,
+      message: unit.commit_messages[i] ?? '',
+      insertions: commit?.insertions ?? 0,
+      deletions: commit?.deletions ?? 0,
+    }
+  })
 }
 
 export function buildConsideredItemsForUnit(
