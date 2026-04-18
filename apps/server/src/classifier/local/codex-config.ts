@@ -22,7 +22,10 @@ export function sanitizeCodexConfig(config: string): string {
     if (!match) continue
 
     const [, key, value] = match
-    const sanitizedValue = sanitizeCodexConfigValue(key, value.trim())
+    const sanitizedValue = sanitizeCodexConfigValue(
+      key,
+      stripTomlInlineComment(value),
+    )
     if (sanitizedValue !== null) {
       lines.push(`${key} = ${sanitizedValue}`)
     }
@@ -52,4 +55,37 @@ function readTomlStringValue(value: string): string | null {
 
   const bare = /^[A-Za-z_-]+$/.exec(value)
   return bare ? value : null
+}
+
+function stripTomlInlineComment(value: string): string {
+  let quote: '"' | "'" | null = null
+  let escaped = false
+
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index]
+
+    if (quote === '"' && char === '\\' && !escaped) {
+      escaped = true
+      continue
+    }
+
+    if (quote) {
+      if (char === quote && !escaped) {
+        quote = null
+      }
+      escaped = false
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+
+    if (char === '#') {
+      return value.slice(0, index).trim()
+    }
+  }
+
+  return value.trim()
 }

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
@@ -122,8 +122,13 @@ export async function createLocalAgentClassifierBackend(
       createCodexHome: async () => {
         mkdirSync(codexRunRoot, { recursive: true })
         const codexHomeDir = mkdtempSync(join(codexRunRoot, 'home-'))
-        await materializeCodex(bundle, codexHomeDir)
-        return codexHomeDir
+        try {
+          await materializeCodex(bundle, codexHomeDir)
+          return codexHomeDir
+        } catch (error) {
+          rmSync(codexHomeDir, { recursive: true, force: true })
+          throw error
+        }
       },
     }),
   )

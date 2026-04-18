@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Classification } from '@auctor/shared/classification'
 import type { ClassifierConfig } from '../config'
@@ -114,5 +115,55 @@ describe('createLocalAgentClassifierBackend', () => {
     })
 
     expect(second).not.toBe(first)
+  })
+
+  test('cleans isolated Codex home when materialization fails', async () => {
+    const config = localConfig()
+    let materializedHomeDir = ''
+    const backend = await createLocalAgentClassifierBackend(config, {
+      cacheRoot: '/tmp/auctor-test-cache',
+      resolveSkillBundle: async () => ({
+        hash: 'bundle-hash',
+        skills: [],
+      }),
+      materializeClaudeSkillBundle: async () => '/tmp/claude-bundle',
+      materializeCodexSkillsHome: async (_bundle, homeDir) => {
+        materializedHomeDir = homeDir
+        writeFileSync(join(homeDir, 'auth.json'), 'secret')
+        throw new Error('codex materialization failed')
+      },
+      getSanitizedCodexConfigHash: () => 'codex-config-hash',
+      createLocalExecutor: (input) => ({
+        type: 'codex',
+        async classify() {
+          await input.createCodexHome()
+          throw new Error('unreachable')
+        },
+      }),
+    })
+
+    await expect(
+      backend.classifyMany({
+        repoPath: '/repo',
+        workUnits: [
+          {
+            id: 'unit-1',
+            kind: 'branch-day',
+            author: 'dev@example.com',
+            branch: 'main',
+            date: '2026-04-18',
+            commit_shas: ['abc123'],
+            commit_messages: ['change'],
+            diff: 'diff',
+            insertions: 1,
+            deletions: 0,
+            net: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('codex materialization failed')
+
+    expect(materializedHomeDir).not.toBe('')
+    expect(existsSync(materializedHomeDir)).toBe(false)
   })
 })

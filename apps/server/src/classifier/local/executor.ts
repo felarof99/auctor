@@ -203,9 +203,10 @@ async function classifyWithCodex(input: {
     effort: input.config.effort,
     bypassApprovals: input.config.bypassApprovals,
   })
-  const codexHomeDir = await input.createCodexHome()
+  let codexHomeDir: string | undefined
 
   try {
+    codexHomeDir = await input.createCodexHome()
     const { stdout } = await runLocalProcess({
       command: input.config.command,
       args,
@@ -219,7 +220,9 @@ async function classifyWithCodex(input: {
 
     return parseClassificationJson(parseCodexJsonl(stdout).finalText)
   } finally {
-    rmSync(codexHomeDir, { recursive: true, force: true })
+    if (codexHomeDir) {
+      rmSync(codexHomeDir, { recursive: true, force: true })
+    }
   }
 }
 
