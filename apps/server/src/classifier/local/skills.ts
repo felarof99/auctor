@@ -1,18 +1,19 @@
 import { createHash } from 'node:crypto'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, relative, sep } from 'node:path'
 
 export interface SkillEntry {
   name: string
   sourceDir: string
-  files: { relativePath: string; content: string }[]
+  files: { relativePath: string; sha256: string }[]
 }
 
 export interface SkillBundle {
@@ -25,6 +26,8 @@ export async function resolveSkillBundle(
   extraSkillPaths: string[],
 ): Promise<SkillBundle> {
   const skills = [classifierSkillPath, ...extraSkillPaths].map(readSkill)
+  rejectDuplicateSkillNames(skills)
+
   const hash = createHash('sha256')
     .update(
       JSON.stringify(
@@ -32,7 +35,7 @@ export async function resolveSkillBundle(
           name: skill.name,
           files: skill.files.map((file) => ({
             relativePath: file.relativePath,
-            content: file.content,
+            sha256: file.sha256,
           })),
         })),
       ),
@@ -59,6 +62,7 @@ export async function materializeCodexSkillsHome(
 ): Promise<string> {
   const skillsHome = join(homeDir, 'skills')
 
+  rmSync(skillsHome, { recursive: true, force: true })
   copySkills(bundle, skillsHome)
 
   return skillsHome
@@ -75,9 +79,28 @@ function readSkill(sourceDir: string): SkillEntry {
     sourceDir,
     files: walkFiles(sourceDir).map((relativePath) => ({
       relativePath,
-      content: readFileSync(join(sourceDir, relativePath), 'utf8'),
+      sha256: hashFile(join(sourceDir, relativePath)),
     })),
   }
+}
+
+function rejectDuplicateSkillNames(skills: SkillEntry[]) {
+  const seen = new Map<string, SkillEntry>()
+
+  for (const skill of skills) {
+    const existing = seen.get(skill.name)
+    if (existing) {
+      throw new Error(
+        `Duplicate skill name "${skill.name}" from ${existing.sourceDir} and ${skill.sourceDir}`,
+      )
+    }
+
+    seen.set(skill.name, skill)
+  }
+}
+
+function hashFile(filePath: string) {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex')
 }
 
 function walkFiles(rootDir: string, currentDir = rootDir): string[] {
@@ -104,7 +127,7 @@ function copySkills(bundle: SkillBundle, skillsRoot: string) {
       const targetFile = join(targetDir, file.relativePath)
 
       mkdirSync(dirname(targetFile), { recursive: true })
-      writeFileSync(targetFile, file.content)
+      copyFileSync(join(skill.sourceDir, file.relativePath), targetFile)
     }
   }
 }

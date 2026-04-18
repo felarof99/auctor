@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
@@ -19,7 +25,7 @@ function makeTempDir() {
 async function writeSkill(
   rootDir: string,
   name: string,
-  files: Record<string, string>,
+  files: Record<string, string | Uint8Array>,
 ) {
   const skillDir = join(rootDir, name)
   await mkdir(skillDir, { recursive: true })
@@ -95,6 +101,78 @@ describe('local classifier skill bundles', () => {
     expect(
       readFileSync(join(skillsHome, 'auctor-classifier/SKILL.md'), 'utf8'),
     ).toBe('# Auctor Classifier\n')
+  })
+
+  test('removes stale files when rematerializing Codex skills home', async () => {
+    const rootDir = makeTempDir()
+    const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
+      'SKILL.md': '# Auctor Classifier\n',
+      'references/old.md': 'old rules\n',
+    })
+    const homeDir = join(rootDir, 'codex-home')
+    const firstBundle = await resolveSkillBundle(skillDir, [])
+
+    const skillsHome = await materializeCodexSkillsHome(firstBundle, homeDir)
+
+    expect(
+      existsSync(join(skillsHome, 'auctor-classifier/references/old.md')),
+    ).toBe(true)
+
+    rmSync(join(skillDir, 'references/old.md'))
+    writeFileSync(join(skillDir, 'references/new.md'), 'new rules\n')
+    const secondBundle = await resolveSkillBundle(skillDir, [])
+
+    await materializeCodexSkillsHome(secondBundle, homeDir)
+
+    expect(
+      existsSync(join(skillsHome, 'auctor-classifier/references/old.md')),
+    ).toBe(false)
+    expect(
+      readFileSync(
+        join(skillsHome, 'auctor-classifier/references/new.md'),
+        'utf8',
+      ),
+    ).toBe('new rules\n')
+  })
+
+  test('rejects duplicate skill names before materialization', async () => {
+    const rootDir = makeTempDir()
+    const firstSkillDir = await writeSkill(join(rootDir, 'a'), 'rules', {
+      'SKILL.md': '# First Rules\n',
+    })
+    const secondSkillDir = await writeSkill(join(rootDir, 'b'), 'rules', {
+      'SKILL.md': '# Second Rules\n',
+    })
+
+    await expect(
+      resolveSkillBundle(firstSkillDir, [secondSkillDir]),
+    ).rejects.toThrow(/duplicate skill name.*rules/i)
+  })
+
+  test('preserves binary skill assets when materializing bundles', async () => {
+    const rootDir = makeTempDir()
+    const binaryAsset = Buffer.from([0x00, 0x9f, 0x92, 0x96, 0xff, 0x0a])
+    const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
+      'SKILL.md': '# Auctor Classifier\n',
+      'assets/icon.bin': binaryAsset,
+      'references/nested/rules.md': 'Use local context.\n',
+    })
+    const bundle = await resolveSkillBundle(skillDir, [])
+
+    const skillsHome = await materializeCodexSkillsHome(
+      bundle,
+      join(rootDir, 'codex-home'),
+    )
+
+    expect(
+      readFileSync(join(skillsHome, 'auctor-classifier/assets/icon.bin')),
+    ).toEqual(binaryAsset)
+    expect(
+      readFileSync(
+        join(skillsHome, 'auctor-classifier/references/nested/rules.md'),
+        'utf8',
+      ),
+    ).toBe('Use local context.\n')
   })
 
   test('rejects skill directories without SKILL.md', async () => {
