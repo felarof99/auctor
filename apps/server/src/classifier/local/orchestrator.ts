@@ -50,7 +50,8 @@ export async function classifyWithLocalExecutors(
       const workUnit = input.workUnits[unitIndex]
       if (!workUnit) return
 
-      const executor = input.executors[unitIndex % input.executors.length]
+      const executor =
+        input.executors[executorIndexForWorkUnit(workUnit, input.executors)]
 
       try {
         const classification = await executor.classify({
@@ -93,6 +94,23 @@ function effectiveWorkerCount(
 ): number {
   const requested = Number.isFinite(maxParallel) ? Math.trunc(maxParallel) : 1
   return Math.min(workUnitCount, Math.max(1, requested))
+}
+
+function executorIndexForWorkUnit(
+  workUnit: WorkUnit,
+  executors: LocalExecutorRuntime[],
+): number {
+  return stableHash(workUnit.id) % executors.length
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return hash >>> 0
 }
 
 function findDuplicateWorkUnitId(workUnits: WorkUnit[]): string | null {

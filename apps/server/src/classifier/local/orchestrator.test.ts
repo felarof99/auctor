@@ -106,45 +106,49 @@ describe('classifyWithLocalExecutors', () => {
     expect(maxActive).toBe(2)
   })
 
-  test('assigns executors round-robin across work units', async () => {
-    const calls: string[] = []
-    const executors: LocalExecutorRuntime[] = [
-      {
-        type: 'claude',
-        async classify({ repoPath: path, workUnit: unit }) {
-          calls.push(`claude:${path}:${unit.id}`)
-          return classification(`claude ${unit.id}`)
+  test('assigns executors deterministically by work unit id', async () => {
+    function executors(
+      assignments: Map<string, string>,
+    ): LocalExecutorRuntime[] {
+      return [
+        {
+          type: 'claude',
+          async classify({ workUnit: unit }) {
+            assignments.set(unit.id, 'claude')
+            return classification(`claude ${unit.id}`)
+          },
         },
-      },
-      {
-        type: 'codex',
-        async classify({ repoPath: path, workUnit: unit }) {
-          calls.push(`codex:${path}:${unit.id}`)
-          return classification(`codex ${unit.id}`)
+        {
+          type: 'codex',
+          async classify({ workUnit: unit }) {
+            assignments.set(unit.id, 'codex')
+            return classification(`codex ${unit.id}`)
+          },
         },
-      },
-    ]
+      ]
+    }
 
-    const results = await classifyWithLocalExecutors({
+    const units = [workUnit('unit-1'), workUnit('unit-2')]
+    const firstAssignments = new Map<string, string>()
+    const secondAssignments = new Map<string, string>()
+
+    const first = await classifyWithLocalExecutors({
       repoPath,
-      workUnits: [
-        workUnit('unit-1'),
-        workUnit('unit-2'),
-        workUnit('unit-3'),
-        workUnit('unit-4'),
-      ],
-      maxParallel: 3,
-      executors,
+      workUnits: units,
+      maxParallel: 1,
+      executors: executors(firstAssignments),
+    })
+    const second = await classifyWithLocalExecutors({
+      repoPath,
+      workUnits: [...units].reverse(),
+      maxParallel: 1,
+      executors: executors(secondAssignments),
     })
 
-    expect(calls).toEqual([
-      'claude:/tmp/repo:unit-1',
-      'codex:/tmp/repo:unit-2',
-      'claude:/tmp/repo:unit-3',
-      'codex:/tmp/repo:unit-4',
-    ])
-    expect(results.get('unit-1')).toEqual(classification('claude unit-1'))
-    expect(results.get('unit-4')).toEqual(classification('codex unit-4'))
+    expect(firstAssignments).toEqual(secondAssignments)
+    for (const unit of units) {
+      expect(second.get(unit.id)).toEqual(first.get(unit.id))
+    }
   })
 
   test('throws on first executor failure', async () => {

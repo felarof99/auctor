@@ -18,6 +18,8 @@ import {
   type SkillBundle,
 } from './skills'
 
+const LOCAL_EXECUTOR_ASSIGNMENT_VERSION = 'unit-id-hash-v1'
+
 export interface LocalAgentCacheContext {
   backend: 'local-agent'
   executor: string | null
@@ -141,6 +143,7 @@ export function buildLocalAgentConfigSignature(
           bypassApprovals: executor.bypassApprovals ?? null,
         })),
         codexConfigHash: context.codexConfigHash ?? null,
+        executorAssignmentVersion: LOCAL_EXECUTOR_ASSIGNMENT_VERSION,
         maxParallel: config.maxParallel,
         timeoutMs: config.timeoutMs,
         repairAttempts: config.repairAttempts,
