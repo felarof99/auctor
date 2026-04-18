@@ -114,7 +114,12 @@ export function createClassifyRoute(
     dependencies.createLocalBackend ?? createLocalAgentClassifierBackend
 
   route.post('/classify', async (c) => {
-    const body = await c.req.json()
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON request body' }, 400)
+    }
 
     return handleClassifyRequest({
       body,

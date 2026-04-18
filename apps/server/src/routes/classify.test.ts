@@ -129,6 +129,19 @@ afterEach(() => {
 })
 
 describe('POST /api/classify', () => {
+  test('returns 400 when request body is malformed JSON', async () => {
+    const res = await app.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"repo_path":',
+    })
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({
+      error: 'Invalid JSON request body',
+    })
+  })
+
   test('returns 400 when repo_path is missing', async () => {
     const res = await postClassify({ work_units: [] })
     expect(res.status).toBe(400)
