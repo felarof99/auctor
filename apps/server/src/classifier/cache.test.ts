@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Classification } from '@auctor/shared/classification'
+import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import {
   buildClassificationCacheKey,
   ClassificationCache,
@@ -22,13 +22,28 @@ const sampleClassification: Classification = {
   reasoning: 'Adds new user authentication flow',
 }
 
+function baseWorkUnit(overrides: Partial<WorkUnit> = {}): WorkUnit {
+  return {
+    id: 'wu-1',
+    kind: 'branch-day',
+    author: 'dev@example.com',
+    branch: 'feat/local-agent-classifier',
+    date: '2026-04-18',
+    commit_shas: ['abc123', 'def456'],
+    commit_messages: ['Add local classifier', 'Wire cache'],
+    diff: 'diff-content-1',
+    insertions: 12,
+    deletions: 3,
+    net: 9,
+    ...overrides,
+  }
+}
+
 function baseCacheKeyInput(
   overrides: Partial<ClassificationCacheKeyInput> = {},
 ): ClassificationCacheKeyInput {
   return {
-    unitId: 'wu-1',
-    commitShas: ['abc123', 'def456'],
-    diffHash: 'diff-hash-1',
+    unit: baseWorkUnit(),
     backend: 'local',
     executor: 'claude',
     model: 'claude-sonnet-4-5',
@@ -40,10 +55,21 @@ function baseCacheKeyInput(
 }
 
 describe('buildClassificationCacheKey', () => {
-  test('changes when diff hash changes', () => {
+  test('changes when unit diff changes', () => {
     const first = buildClassificationCacheKey(baseCacheKeyInput())
     const second = buildClassificationCacheKey(
-      baseCacheKeyInput({ diffHash: 'diff-hash-2' }),
+      baseCacheKeyInput({ unit: baseWorkUnit({ diff: 'diff-content-2' }) }),
+    )
+
+    expect(second).not.toBe(first)
+  })
+
+  test('preserves commit SHA order in the cache key', () => {
+    const first = buildClassificationCacheKey(baseCacheKeyInput())
+    const second = buildClassificationCacheKey(
+      baseCacheKeyInput({
+        unit: baseWorkUnit({ commit_shas: ['def456', 'abc123'] }),
+      }),
     )
 
     expect(second).not.toBe(first)
@@ -62,14 +88,12 @@ describe('buildClassificationCacheKey', () => {
     const first = buildClassificationCacheKey(baseCacheKeyInput())
     const second = buildClassificationCacheKey({
       backend: 'local',
-      commitShas: ['abc123', 'def456'],
-      diffHash: 'diff-hash-1',
       effort: 'medium',
       executor: 'claude',
       model: 'claude-sonnet-4-5',
       promptVersion: 'classifier-v1',
       skillBundleHash: 'skills-1',
-      unitId: 'wu-1',
+      unit: baseWorkUnit(),
     })
 
     expect(second).toBe(first)

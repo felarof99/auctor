@@ -26,10 +26,7 @@ function extractJsonFences(text: string): string[] {
   )
 }
 
-function extractFirstBalancedObject(text: string): string | null {
-  const start = text.indexOf('{')
-  if (start === -1) return null
-
+function findBalancedObjectEnd(text: string, start: number): number | null {
   let depth = 0
   let inString = false
   let escaped = false
@@ -55,7 +52,7 @@ function extractFirstBalancedObject(text: string): string | null {
     } else if (char === '}') {
       depth -= 1
       if (depth === 0) {
-        return text.slice(start, index + 1)
+        return index
       }
     }
   }
@@ -63,12 +60,28 @@ function extractFirstBalancedObject(text: string): string | null {
   return null
 }
 
+function extractBalancedObjects(text: string): string[] {
+  const objects: string[] = []
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== '{') continue
+
+    const end = findBalancedObjectEnd(text, index)
+    if (end === null) continue
+
+    objects.push(text.slice(index, end + 1))
+    index = end
+  }
+
+  return objects
+}
+
 export function parseClassificationJson(text: string): Classification {
   const candidates = [
     text.trim(),
     ...extractJsonFences(text),
-    extractFirstBalancedObject(text),
-  ].filter((candidate): candidate is string => Boolean(candidate))
+    ...extractBalancedObjects(text),
+  ].filter(Boolean)
 
   const errors: string[] = []
 

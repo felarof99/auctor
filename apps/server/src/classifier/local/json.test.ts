@@ -33,6 +33,17 @@ describe('parseClassificationJson', () => {
     expect(parseClassificationJson(text)).toEqual(sampleClassification)
   })
 
+  test('skips earlier embedded JSON that does not match the classification schema', () => {
+    const text = [
+      'Initial metadata:',
+      JSON.stringify({ status: 'ok', tokens: 1200 }),
+      'Final classification:',
+      JSON.stringify(sampleClassification),
+    ].join('\n')
+
+    expect(parseClassificationJson(text)).toEqual(sampleClassification)
+  })
+
   test('throws a validation error for invalid classification JSON', () => {
     const invalid = JSON.stringify({
       type: 'not-a-type',

@@ -5,12 +5,11 @@ import { dirname } from 'node:path'
 import {
   type Classification,
   ClassificationSchema,
+  type WorkUnit,
 } from '@auctor/shared/classification'
 
 export interface ClassificationCacheKeyInput {
-  unitId: string
-  commitShas: string[]
-  diffHash: string
+  unit: WorkUnit
   backend: string
   executor?: string | null
   model?: string | null
@@ -39,9 +38,9 @@ export function buildClassificationCacheKey(
   input: ClassificationCacheKeyInput,
 ): string {
   const payload = {
-    unitId: input.unitId,
-    commitShas: input.commitShas,
-    diffHash: input.diffHash,
+    unitId: input.unit.id,
+    commitShas: input.unit.commit_shas,
+    diffHash: createHash('sha256').update(input.unit.diff).digest('hex'),
     backend: input.backend,
     executor: input.executor ?? null,
     model: input.model ?? null,
