@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import type { BundleView } from '@/src/hooks/use-reports'
+import type { BundleView, ResultRootOption } from '@/src/hooks/use-reports'
 import { useReports } from '@/src/hooks/use-reports'
 
 type SortKey = keyof Pick<
@@ -446,14 +446,65 @@ function BundlePanel({ bundle }: { bundle: BundleView }) {
   )
 }
 
+function HeaderActions({
+  resultRoots,
+  selectedResultRoot,
+  syncing,
+  onRootChange,
+  onRefresh,
+}: {
+  resultRoots: ResultRootOption[]
+  selectedResultRoot: string
+  syncing: boolean
+  onRootChange: (path: string) => void
+  onRefresh: () => Promise<void>
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Result root"
+        className="h-8 min-w-[11rem] rounded-md border border-input bg-background px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+        value={selectedResultRoot}
+        onChange={(event) => onRootChange(event.target.value)}
+      >
+        {resultRoots.map((root) => (
+          <option key={root.path} value={root.path}>
+            {root.label}
+          </option>
+        ))}
+      </select>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => void onRefresh()}
+        disabled={syncing}
+      >
+        <RefreshCw className={cn('size-4', syncing && 'animate-spin')} />
+        {syncing ? 'Syncing' : 'Refresh'}
+      </Button>
+    </div>
+  )
+}
+
 export function App() {
-  const { bundles, bundleNames, loading, error, refresh } = useReports()
+  const {
+    bundles,
+    bundleNames,
+    resultRoots,
+    selectedResultRoot,
+    setSelectedResultRoot,
+    loading,
+    syncing,
+    error,
+    refresh,
+  } = useReports()
   const [selectedBundle, setSelectedBundle] = useState<string | null>(null)
 
   const activeBundleName = selectedBundle ?? bundleNames[0] ?? null
   const activeBundle = activeBundleName ? bundles[activeBundleName] : null
 
-  if (loading) {
+  if (loading && bundleNames.length === 0 && !error) {
     return (
       <div className="min-h-dvh bg-background text-foreground">
         <div className="mx-auto max-w-5xl px-6 py-10">
@@ -468,7 +519,22 @@ export function App() {
   if (error) {
     return (
       <div className="min-h-dvh bg-background text-foreground">
-        <div className="mx-auto max-w-4xl px-6 py-10">
+        <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-10">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <h1 className="font-semibold text-2xl leading-none">auctor</h1>
+              <div className="text-muted-foreground text-sm">
+                Engineering Productivity Leaderboard
+              </div>
+            </div>
+            <HeaderActions
+              resultRoots={resultRoots}
+              selectedResultRoot={selectedResultRoot}
+              syncing={syncing}
+              onRootChange={setSelectedResultRoot}
+              onRefresh={refresh}
+            />
+          </div>
           <Card className="border-destructive/50">
             <CardHeader>
               <CardTitle className="text-destructive">
@@ -497,10 +563,13 @@ export function App() {
               Engineering Productivity Leaderboard
             </div>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={refresh}>
-            <RefreshCw className="size-4" />
-            Refresh
-          </Button>
+          <HeaderActions
+            resultRoots={resultRoots}
+            selectedResultRoot={selectedResultRoot}
+            syncing={syncing}
+            onRootChange={setSelectedResultRoot}
+            onRefresh={refresh}
+          />
         </div>
 
         {/* Primary bundle tabs (only when >1 bundle) */}

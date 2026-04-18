@@ -10,6 +10,7 @@ import {
 } from '../bundle'
 import { getUniqueAuthors } from '../git/authors'
 import { parseTimeWindow } from '../git/log'
+import { resolveBundleConfigPath } from '../paths'
 import type { BundleConfig } from '../types'
 
 export async function configure(
@@ -22,7 +23,7 @@ export async function configure(
     process.exit(1)
   }
 
-  const absoluteConfigPath = resolve(configPath)
+  const absoluteConfigPath = resolveBundleConfigPath(configPath)
   const absoluteRepoPaths = repoPaths.map((p) => resolve(p))
 
   for (const repoPath of absoluteRepoPaths) {

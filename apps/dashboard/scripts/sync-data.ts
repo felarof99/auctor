@@ -1,9 +1,17 @@
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 
 export interface SyncOptions {
   rootDir: string
   outDir: string
+  resultsRoot?: string
 }
 
 interface BundleEntry {
@@ -15,38 +23,36 @@ interface Manifest {
   bundles: BundleEntry[]
 }
 
+interface RepoReportRef {
+  bundle: string
+  repo: string
+  generatedAt: string
+  sourcePath: string
+  sourceRel: string
+  mtimeMs: number
+}
+
 export async function syncDashboardData(opts: SyncOptions): Promise<void> {
-  const { rootDir, outDir } = opts
+  const { rootDir, outDir, resultsRoot = 'out' } = opts
 
   mkdirSync(outDir, { recursive: true })
 
-  const glob = new Bun.Glob('configs/*/.results/*.json')
-  const matches = await Array.fromAsync(
-    glob.scan({ cwd: rootDir, absolute: false, dot: true }),
-  )
-
-  const microscopeRe = /-microscope-/
+  const reports = await findLatestRepoReports(rootDir, resultsRoot)
 
   const bundleMap = new Map<string, string[]>()
   const expectedFiles = new Set<string>()
 
-  for (const rel of matches) {
-    const file = basename(rel)
-    if (microscopeRe.test(file)) continue
-
-    const bundleName = basename(dirname(dirname(rel)))
-    const repoName = file.replace(/\.json$/, '')
-    const outFile = `${bundleName}__${repoName}.json`
-
-    const srcPath = join(rootDir, rel)
+  for (const report of reports) {
+    const outFile = `${report.bundle}__${report.repo}.json`
+    const srcPath = report.sourcePath
     const destPath = join(outDir, outFile)
 
     const contents = await Bun.file(srcPath).text()
     await Bun.write(destPath, contents)
 
-    const repos = bundleMap.get(bundleName) ?? []
-    if (!repos.includes(repoName)) repos.push(repoName)
-    bundleMap.set(bundleName, repos)
+    const repos = bundleMap.get(report.bundle) ?? []
+    if (!repos.includes(report.repo)) repos.push(report.repo)
+    bundleMap.set(report.bundle, repos)
     expectedFiles.add(outFile)
   }
 
@@ -72,12 +78,121 @@ export async function syncDashboardData(opts: SyncOptions): Promise<void> {
 
   const fileCount = expectedFiles.size
   const bundleCount = bundles.length
-  console.log(`Synced ${fileCount} files across ${bundleCount} bundles`)
+  console.log(
+    `Synced ${fileCount} files across ${bundleCount} bundles from ${resultsRoot}`,
+  )
 }
 
-// CLI entry point
-const scriptDir = import.meta.dir
-const rootDir = resolve(scriptDir, '../../..')
-const outDir = resolve(scriptDir, '../public/data')
+async function findLatestRepoReports(
+  rootDir: string,
+  resultsRoot: string,
+): Promise<RepoReportRef[]> {
+  const sourceRoot = resolveSourceRoot(rootDir, resultsRoot)
+  const refs = await findRepoReportRefs(sourceRoot)
+  const latestByRepo = new Map<string, RepoReportRef>()
+  for (const ref of refs) {
+    const key = `${ref.bundle}\0${ref.repo}`
+    const current = latestByRepo.get(key)
+    if (!current || isNewerReport(ref, current)) {
+      latestByRepo.set(key, ref)
+    }
+  }
+  return [...latestByRepo.values()].sort((a, b) => {
+    const bundleSort = a.bundle.localeCompare(b.bundle)
+    return bundleSort || a.repo.localeCompare(b.repo)
+  })
+}
 
-await syncDashboardData({ rootDir, outDir })
+async function findRepoReportRefs(
+  sourceRoot: string,
+): Promise<RepoReportRef[]> {
+  if (!existsSync(sourceRoot)) return []
+
+  const scanRoots = getScanRoots(sourceRoot)
+  const refs: RepoReportRef[] = []
+  for (const scan of scanRoots) {
+    const glob = new Bun.Glob(scan.pattern)
+    const matches = await Array.fromAsync(
+      glob.scan({ cwd: scan.cwd, absolute: false, dot: true }),
+    )
+    for (const rel of matches) {
+      if (basename(rel).includes('-microscope-')) continue
+      const sourcePath = join(scan.cwd, rel)
+      const report = await readRepoReportRef(sourcePath, rel)
+      if (report) refs.push(report)
+    }
+  }
+  return refs
+}
+
+function getScanRoots(sourceRoot: string): { cwd: string; pattern: string }[] {
+  if (basename(sourceRoot) === 'results') {
+    return [{ cwd: sourceRoot, pattern: '*.json' }]
+  }
+  if (existsSync(join(sourceRoot, 'results'))) {
+    return [{ cwd: sourceRoot, pattern: 'results/*.json' }]
+  }
+  const roots = [{ cwd: sourceRoot, pattern: '*/results/*.json' }]
+  if (basename(sourceRoot) === 'configs') {
+    roots.push({ cwd: sourceRoot, pattern: '*/.results/*.json' })
+  }
+  return roots
+}
+
+async function readRepoReportRef(
+  sourcePath: string,
+  sourceRel: string,
+): Promise<RepoReportRef | null> {
+  try {
+    const raw = await Bun.file(sourcePath).json()
+    if (!raw || typeof raw !== 'object') return null
+    const report = raw as Record<string, unknown>
+    if (typeof report.bundle !== 'string') return null
+    if (typeof report.repo !== 'string') return null
+    if (!Array.isArray(report.authors)) return null
+    return {
+      bundle: report.bundle,
+      repo: report.repo,
+      generatedAt:
+        typeof report.generated_at === 'string' ? report.generated_at : '',
+      sourcePath,
+      sourceRel,
+      mtimeMs: statSync(sourcePath).mtimeMs,
+    }
+  } catch {
+    return null
+  }
+}
+
+function resolveSourceRoot(rootDir: string, resultsRoot: string): string {
+  if (isAbsolute(resultsRoot)) return resultsRoot
+  return resolve(rootDir, resultsRoot)
+}
+
+function isNewerReport(
+  candidate: RepoReportRef,
+  current: RepoReportRef,
+): boolean {
+  if (candidate.generatedAt !== current.generatedAt) {
+    return candidate.generatedAt > current.generatedAt
+  }
+  if (candidate.mtimeMs !== current.mtimeMs) {
+    return candidate.mtimeMs > current.mtimeMs
+  }
+  return candidate.sourceRel.localeCompare(current.sourceRel) > 0
+}
+
+function parseArgs(args: string[]): string {
+  const rootIndex = args.indexOf('--root')
+  if (rootIndex >= 0) return args[rootIndex + 1] ?? 'out'
+  return process.env.AUCTOR_RESULTS_ROOT ?? 'out'
+}
+
+if (import.meta.main) {
+  const scriptDir = import.meta.dir
+  const rootDir = resolve(scriptDir, '../../..')
+  const outDir = resolve(scriptDir, '../public/data')
+  const resultsRoot = parseArgs(Bun.argv.slice(2))
+
+  await syncDashboardData({ rootDir, outDir, resultsRoot })
+}

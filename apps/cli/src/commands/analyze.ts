@@ -21,6 +21,11 @@ import {
 } from '../git/log'
 import { extractBranchDayUnits, extractPrUnits } from '../git/work-units'
 import { renderLeaderboard, renderSparklines } from '../output'
+import {
+  buildRepoResultFilename,
+  getResultsDir,
+  resolveBundleConfigPath,
+} from '../paths'
 import { calculateUnitScore } from '../scoring'
 import type { BundleConfig, BundleRepo, Commit } from '../types'
 
@@ -30,7 +35,7 @@ export async function analyze(
   jsonPath?: string,
   options?: { fetch?: boolean },
 ): Promise<void> {
-  const absoluteConfigPath = resolve(configPath)
+  const absoluteConfigPath = resolveBundleConfigPath(configPath)
   const bundle = await loadBundle(absoluteConfigPath)
 
   const validRepos = bundle.repos.filter((r) => {
@@ -53,7 +58,7 @@ export async function analyze(
   const daysMatch = timeWindow.match(/^-?(\d+)d$/)
   const daysInWindow = daysMatch ? Number.parseInt(daysMatch[1], 10) : 7
 
-  const resultsDir = join(dirname(absoluteConfigPath), '.results')
+  const resultsDir = getResultsDir(absoluteConfigPath)
   mkdirSync(resultsDir, { recursive: true })
 
   const perRepoReports: RepoReport[] = []
@@ -70,7 +75,7 @@ export async function analyze(
     }
     perRepoReports.push(report)
 
-    const repoResultPath = join(resultsDir, `${repo.name}.json`)
+    const repoResultPath = join(resultsDir, buildRepoResultFilename(repo.name))
     await Bun.write(repoResultPath, JSON.stringify(report, null, 2))
     console.log(`[${repo.name}] wrote ${repoResultPath}`)
   }
