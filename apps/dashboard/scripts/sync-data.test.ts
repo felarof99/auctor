@@ -114,13 +114,23 @@ describe('syncDashboardData', () => {
     makeResultFile(
       'browseros',
       'browseros-main',
-      { bundle: 'browseros', repo: 'browseros-main', authors: [{ old: true }] },
+      {
+        bundle: 'browseros',
+        repo: 'browseros-main',
+        generated_at: '2026-04-18T09:42:00.000Z',
+        authors: [{ old: true }],
+      },
       'apr-18-09-42',
     )
     makeResultFile(
       'browseros',
       'browseros-main',
-      { bundle: 'browseros', repo: 'browseros-main', authors: [{ new: true }] },
+      {
+        bundle: 'browseros',
+        repo: 'browseros-main',
+        generated_at: '2026-04-18T09:43:00.000Z',
+        authors: [{ new: true }],
+      },
       'apr-18-09-43',
     )
 

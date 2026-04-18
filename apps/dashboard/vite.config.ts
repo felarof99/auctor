@@ -91,6 +91,14 @@ function runSync(
     const stderr: Buffer[] = []
     child.stdout.on('data', (chunk) => stdout.push(chunk))
     child.stderr.on('data', (chunk) => stderr.push(chunk))
+    child.on('error', (error) => {
+      stderr.push(Buffer.from(error.message))
+      resolveRun({
+        exitCode: 1,
+        stdout: Buffer.concat(stdout).toString(),
+        stderr: Buffer.concat(stderr).toString(),
+      })
+    })
     child.on('close', (exitCode) => {
       resolveRun({
         exitCode: exitCode ?? 1,

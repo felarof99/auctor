@@ -18,7 +18,6 @@ interface UseReportsResult {
   loading: boolean
   syncing: boolean
   error: string | null
-  syncOutput: string | null
   refresh: () => Promise<void>
 }
 
@@ -42,7 +41,6 @@ export function useReports(): UseReportsResult {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [syncOutput, setSyncOutput] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -111,7 +109,6 @@ export function useReports(): UseReportsResult {
   const refresh = useCallback(async () => {
     setSyncing(true)
     setError(null)
-    setSyncOutput(null)
     try {
       const res = await fetch('/api/sync', {
         method: 'POST',
@@ -123,7 +120,6 @@ export function useReports(): UseReportsResult {
         output?: string
       }
       if (!res.ok) throw new Error(data.error ?? 'sync.sh failed')
-      setSyncOutput(data.output ?? null)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -147,7 +143,6 @@ export function useReports(): UseReportsResult {
     loading,
     syncing,
     error,
-    syncOutput,
     refresh,
   }
 }

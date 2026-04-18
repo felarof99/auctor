@@ -26,6 +26,7 @@ interface Manifest {
 interface RepoReportRef {
   bundle: string
   repo: string
+  generatedAt: string
   sourcePath: string
   sourceRel: string
   mtimeMs: number
@@ -152,6 +153,8 @@ async function readRepoReportRef(
     return {
       bundle: report.bundle,
       repo: report.repo,
+      generatedAt:
+        typeof report.generated_at === 'string' ? report.generated_at : '',
       sourcePath,
       sourceRel,
       mtimeMs: statSync(sourcePath).mtimeMs,
@@ -170,6 +173,9 @@ function isNewerReport(
   candidate: RepoReportRef,
   current: RepoReportRef,
 ): boolean {
+  if (candidate.generatedAt !== current.generatedAt) {
+    return candidate.generatedAt > current.generatedAt
+  }
   if (candidate.mtimeMs !== current.mtimeMs) {
     return candidate.mtimeMs > current.mtimeMs
   }
