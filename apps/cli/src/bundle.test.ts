@@ -37,14 +37,38 @@ describe('saveBundle + loadBundle', () => {
     await saveBundle(path, {
       ...base,
       server_url: 'https://server',
-      convex_url: 'https://convex',
     })
     const loaded = await loadBundle(path)
     expect(loaded.name).toBe('browseros')
     expect(loaded.server_url).toBe('https://server')
-    expect(loaded.convex_url).toBe('https://convex')
     expect(loaded.repos).toEqual([{ name: 'main', path: '/tmp/main' }])
     expect(loaded.engineers).toEqual(['alice'])
+  })
+
+  test('ignores legacy convex_url values instead of preserving them', async () => {
+    const dir = mkTmp()
+    const path = join(dir, 'browseros.yaml')
+    await Bun.write(
+      path,
+      [
+        'name: browseros',
+        'server_url: https://server',
+        'convex_url: https://convex',
+        'repos:',
+        '  - name: main',
+        '    path: /tmp/main',
+        'engineers:',
+        '  - alice',
+        '',
+      ].join('\n'),
+    )
+
+    const loaded = await loadBundle(path)
+    await saveBundle(path, loaded)
+    const saved = await Bun.file(path).text()
+
+    expect('convex_url' in loaded).toBe(false)
+    expect(saved).not.toContain('convex_url')
   })
 
   test('loadBundle throws when file does not exist', async () => {

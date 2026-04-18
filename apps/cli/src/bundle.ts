@@ -18,7 +18,6 @@ export async function saveBundle(
   const ordered: BundleConfig = {
     name: config.name,
     ...(config.server_url ? { server_url: config.server_url } : {}),
-    ...(config.convex_url ? { convex_url: config.convex_url } : {}),
     repos: config.repos,
     engineers: config.engineers,
   }
@@ -95,9 +94,6 @@ function validate(raw: unknown, path: string): BundleConfig {
     name: obj.name,
     ...(typeof obj.server_url === 'string'
       ? { server_url: obj.server_url }
-      : {}),
-    ...(typeof obj.convex_url === 'string'
-      ? { convex_url: obj.convex_url }
       : {}),
     repos,
     engineers,
