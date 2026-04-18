@@ -8,40 +8,47 @@ import type {
 import { Hono } from 'hono'
 import { classifyWorkUnit } from '../classifier/agent'
 import { ClassificationCache } from '../classifier/cache'
-import { RepoManager } from '../repo/manager'
 
-const REPOS_DIR = process.env.REPOS_DIR || '/tmp/auctor-repos'
 const CACHE_DB = process.env.CACHE_DB || '/tmp/auctor-cache.sqlite'
 
-// Ensure directories exist before opening SQLite or cloning repos
+// Ensure the cache directory exists before opening SQLite.
 mkdirSync(dirname(CACHE_DB), { recursive: true })
-mkdirSync(REPOS_DIR, { recursive: true })
 
-const repoManager = new RepoManager(REPOS_DIR)
 const cache = new ClassificationCache(CACHE_DB)
 
 export const classifyRoute = new Hono()
 
+async function resolveGitRepoPath(repoPath: string): Promise<string | null> {
+  const proc = Bun.spawn(
+    ['git', '-C', repoPath, 'rev-parse', '--show-toplevel'],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [stdout, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    proc.exited,
+  ])
+  if (code !== 0) return null
+  return stdout.trim()
+}
+
 classifyRoute.post('/classify', async (c) => {
   const body = (await c.req.json()) as Partial<ClassifyRequest>
 
-  if (!body.repo_url || typeof body.repo_url !== 'string') {
-    return c.json({ error: 'repo_url is required' }, 400)
+  if (!body.repo_path || typeof body.repo_path !== 'string') {
+    return c.json({ error: 'repo_path is required' }, 400)
   }
 
   if (!Array.isArray(body.work_units)) {
     return c.json({ error: 'work_units is required' }, 400)
   }
 
-  if (body.work_units.length === 0) {
-    return c.json({ classifications: [] } satisfies ClassifyResponse, 200)
+  const repoPath = await resolveGitRepoPath(body.repo_path)
+  if (!repoPath) {
+    return c.json({ error: 'repo_path must point to a git repo' }, 400)
   }
 
-  let repoDir = '/tmp'
-  try {
-    repoDir = await repoManager.ensureRepo(body.repo_url)
-  } catch {
-    // repo cloning is optional — classifier uses diffs from the payload
+  if (body.work_units.length === 0) {
+    return c.json({ classifications: [] } satisfies ClassifyResponse, 200)
   }
 
   const classifications: ClassifiedWorkUnit[] = []
@@ -54,7 +61,7 @@ classifyRoute.post('/classify', async (c) => {
     }
 
     try {
-      const classification = await classifyWorkUnit(unit, repoDir)
+      const classification = await classifyWorkUnit(unit, repoPath)
       cache.set(unit.id, classification)
       classifications.push({ id: unit.id, classification })
     } catch (err) {
