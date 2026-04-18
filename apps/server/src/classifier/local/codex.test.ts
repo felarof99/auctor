@@ -53,6 +53,40 @@ describe('Codex local executor helpers', () => {
     })
   })
 
+  test('parses current Codex agent messages from nested msg events', () => {
+    const classificationJson = JSON.stringify({
+      type: 'feature',
+      difficulty: 'hard',
+      impact_score: 8,
+      reasoning: 'classified by codex 0.22',
+    })
+    const stdout = [
+      JSON.stringify({
+        type: 'thread.started',
+        thread_id: 'thread-456',
+      }),
+      JSON.stringify({
+        id: '0',
+        msg: {
+          type: 'agent_reasoning',
+          text: 'ignored reasoning',
+        },
+      }),
+      JSON.stringify({
+        id: '1',
+        msg: {
+          type: 'agent_message',
+          message: `  ${classificationJson}  `,
+        },
+      }),
+    ].join('\n')
+
+    expect(parseCodexJsonl(stdout)).toEqual({
+      threadId: 'thread-456',
+      finalText: classificationJson,
+    })
+  })
+
   test('ignores malformed lines and keeps the latest agent message', () => {
     const stdout = [
       '{bad json',

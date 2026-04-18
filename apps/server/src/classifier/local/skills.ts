@@ -7,8 +7,16 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+
+const SAFE_CODEX_CONFIG_KEYS = new Set([
+  'model',
+  'model_reasoning_effort',
+  'service_tier',
+])
 
 export interface SkillEntry {
   name: string
@@ -62,10 +70,55 @@ export async function materializeCodexSkillsHome(
 ): Promise<string> {
   const skillsHome = join(homeDir, 'skills')
 
+  mkdirSync(homeDir, { recursive: true })
+  copyCodexAuthAndConfig(homeDir)
   rmSync(skillsHome, { recursive: true, force: true })
   copySkills(bundle, skillsHome)
 
   return skillsHome
+}
+
+function copyCodexAuthAndConfig(homeDir: string) {
+  const sourceHome = process.env.CODEX_HOME || join(homedir(), '.codex')
+  const sourceAuth = join(sourceHome, 'auth.json')
+  if (existsSync(sourceAuth) && statSync(sourceAuth).isFile()) {
+    copyFileIfDifferent(sourceAuth, join(homeDir, 'auth.json'))
+  }
+
+  const sourceConfig = join(sourceHome, 'config.toml')
+  if (existsSync(sourceConfig) && statSync(sourceConfig).isFile()) {
+    writeFileSync(
+      join(homeDir, 'config.toml'),
+      sanitizeCodexConfig(readFileSync(sourceConfig, 'utf8')),
+    )
+  }
+}
+
+function copyFileIfDifferent(sourcePath: string, targetPath: string) {
+  if (resolve(sourcePath) === resolve(targetPath)) return
+
+  mkdirSync(dirname(targetPath), { recursive: true })
+  copyFileSync(sourcePath, targetPath)
+}
+
+function sanitizeCodexConfig(config: string): string {
+  const lines: string[] = []
+
+  for (const line of config.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    if (trimmed.startsWith('[')) break
+
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(trimmed)
+    if (!match) continue
+
+    const [, key, value] = match
+    if (SAFE_CODEX_CONFIG_KEYS.has(key)) {
+      lines.push(`${key} = ${value.trim()}`)
+    }
+  }
+
+  return lines.length > 0 ? `${lines.join('\n')}\n` : ''
 }
 
 function readSkill(sourceDir: string): SkillEntry {

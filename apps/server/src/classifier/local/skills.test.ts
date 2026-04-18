@@ -15,6 +15,7 @@ import {
 } from './skills'
 
 const tempDirs: string[] = []
+const originalCodexHome = process.env.CODEX_HOME
 
 function makeTempDir() {
   const dir = mkdtempSync(join(process.cwd(), 'tmp-skill-bundle-'))
@@ -43,6 +44,12 @@ describe('local classifier skill bundles', () => {
   afterEach(() => {
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true })
+    }
+
+    if (originalCodexHome === undefined) {
+      delete process.env.CODEX_HOME
+    } else {
+      process.env.CODEX_HOME = originalCodexHome
     }
   })
 
@@ -89,9 +96,12 @@ describe('local classifier skill bundles', () => {
 
   test('materializes Codex bundle under skills home', async () => {
     const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
     const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
       'SKILL.md': '# Auctor Classifier\n',
     })
+    await mkdir(sourceHome, { recursive: true })
+    process.env.CODEX_HOME = sourceHome
     const bundle = await resolveSkillBundle(skillDir, [])
     const homeDir = join(rootDir, 'codex-home')
 
@@ -103,12 +113,59 @@ describe('local classifier skill bundles', () => {
     ).toBe('# Auctor Classifier\n')
   })
 
+  test('copies auth and sanitized top-level Codex config into materialized home', async () => {
+    const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
+    const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
+      'SKILL.md': '# Auctor Classifier\n',
+    })
+    await mkdir(sourceHome, { recursive: true })
+    writeFileSync(
+      join(sourceHome, 'auth.json'),
+      JSON.stringify({ OPENAI_API_KEY: 'synthetic-test-key' }),
+    )
+    writeFileSync(
+      join(sourceHome, 'config.toml'),
+      [
+        'model = "gpt-5.2-codex"',
+        'model_reasoning_effort = "high"',
+        'service_tier = "flex"',
+        'approval_policy = "never"',
+        '',
+        '[mcp_servers.github]',
+        'command = "gh"',
+        '',
+        '[projects."/repo"]',
+        'trust_level = "trusted"',
+        '',
+      ].join('\n'),
+    )
+    process.env.CODEX_HOME = sourceHome
+    const bundle = await resolveSkillBundle(skillDir, [])
+    const homeDir = join(rootDir, 'codex-home')
+
+    await materializeCodexSkillsHome(bundle, homeDir)
+
+    expect(existsSync(join(homeDir, 'auth.json'))).toBe(true)
+    expect(readFileSync(join(homeDir, 'config.toml'), 'utf8')).toBe(
+      [
+        'model = "gpt-5.2-codex"',
+        'model_reasoning_effort = "high"',
+        'service_tier = "flex"',
+        '',
+      ].join('\n'),
+    )
+  })
+
   test('removes stale files when rematerializing Codex skills home', async () => {
     const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
     const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
       'SKILL.md': '# Auctor Classifier\n',
       'references/old.md': 'old rules\n',
     })
+    await mkdir(sourceHome, { recursive: true })
+    process.env.CODEX_HOME = sourceHome
     const homeDir = join(rootDir, 'codex-home')
     const firstBundle = await resolveSkillBundle(skillDir, [])
 
@@ -135,6 +192,53 @@ describe('local classifier skill bundles', () => {
     ).toBe('new rules\n')
   })
 
+  test('rematerializes Codex skills without wiping copied auth and config', async () => {
+    const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
+    const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
+      'SKILL.md': '# Auctor Classifier\n',
+      'references/old.md': 'old rules\n',
+    })
+    await mkdir(sourceHome, { recursive: true })
+    writeFileSync(
+      join(sourceHome, 'auth.json'),
+      JSON.stringify({ OPENAI_API_KEY: 'synthetic-test-key' }),
+    )
+    writeFileSync(
+      join(sourceHome, 'config.toml'),
+      'model = "gpt-5.2-codex"\n[mcp_servers.local]\ncommand = "broken"\n',
+    )
+    process.env.CODEX_HOME = sourceHome
+    const homeDir = join(rootDir, 'codex-home')
+    const firstBundle = await resolveSkillBundle(skillDir, [])
+
+    const skillsHome = await materializeCodexSkillsHome(firstBundle, homeDir)
+
+    expect(
+      existsSync(join(skillsHome, 'auctor-classifier/references/old.md')),
+    ).toBe(true)
+
+    rmSync(join(skillDir, 'references/old.md'))
+    writeFileSync(join(skillDir, 'references/new.md'), 'new rules\n')
+    const secondBundle = await resolveSkillBundle(skillDir, [])
+
+    await materializeCodexSkillsHome(secondBundle, homeDir)
+
+    expect(
+      existsSync(join(skillsHome, 'auctor-classifier/references/old.md')),
+    ).toBe(false)
+    expect(
+      readFileSync(
+        join(skillsHome, 'auctor-classifier/references/new.md'),
+        'utf8',
+      ),
+    ).toBe('new rules\n')
+    expect(existsSync(join(homeDir, 'auth.json'))).toBe(true)
+    expect(readFileSync(join(homeDir, 'config.toml'), 'utf8')).toBe(
+      'model = "gpt-5.2-codex"\n',
+    )
+  })
+
   test('rejects duplicate skill names before materialization', async () => {
     const rootDir = makeTempDir()
     const firstSkillDir = await writeSkill(join(rootDir, 'a'), 'rules', {
@@ -151,12 +255,15 @@ describe('local classifier skill bundles', () => {
 
   test('preserves binary skill assets when materializing bundles', async () => {
     const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
     const binaryAsset = Buffer.from([0x00, 0x9f, 0x92, 0x96, 0xff, 0x0a])
     const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
       'SKILL.md': '# Auctor Classifier\n',
       'assets/icon.bin': binaryAsset,
       'references/nested/rules.md': 'Use local context.\n',
     })
+    await mkdir(sourceHome, { recursive: true })
+    process.env.CODEX_HOME = sourceHome
     const bundle = await resolveSkillBundle(skillDir, [])
 
     const skillsHome = await materializeCodexSkillsHome(

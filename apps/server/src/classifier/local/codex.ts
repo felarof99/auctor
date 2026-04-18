@@ -42,13 +42,19 @@ export function parseCodexJsonl(stdout: string): ParsedCodexOutput {
       continue
     }
 
-    if (event.type !== 'item.completed' || !isRecord(event.item)) continue
-    if (event.item.type !== 'agent_message') continue
+    const message =
+      event.type === 'item.completed' && isRecord(event.item)
+        ? event.item
+        : isRecord(event.msg)
+          ? event.msg
+          : null
+    if (!message || message.type !== 'agent_message') continue
 
     const text =
-      readString(event.item, 'text') ??
-      readString(event.item, 'content') ??
-      readTextFromMessageContent(event.item.content)
+      readString(message, 'message') ??
+      readString(message, 'text') ??
+      readString(message, 'content') ??
+      readTextFromMessageContent(message.content)
 
     if (text !== null) {
       finalText = text
