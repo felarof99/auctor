@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import type { WorkUnit } from '@auctor/shared/classification'
-import { buildConsideredItemsForUnit } from './analyze'
+import type { ClassifiedWorkUnit } from '@auctor/shared/api-types'
+import type { Classification, WorkUnit } from '@auctor/shared/classification'
+import { buildClassificationMap, buildConsideredItemsForUnit } from './analyze'
 
 function makeUnit(overrides: Partial<WorkUnit> = {}): WorkUnit {
   return {
@@ -100,5 +101,21 @@ describe('buildConsideredItemsForUnit', () => {
     )
 
     expect(considered.prs[0].pr_number).toBe(690)
+  })
+})
+
+describe('buildClassificationMap', () => {
+  test('uses returned classifier results by work unit id', () => {
+    const classification: Classification = {
+      type: 'bugfix',
+      difficulty: 'hard',
+      impact_score: 8,
+      reasoning: 'Fixes branch-aware analysis',
+    }
+    const returned: ClassifiedWorkUnit[] = [{ id: 'unit-1', classification }]
+
+    const map = buildClassificationMap(returned)
+
+    expect(map.get('unit-1')).toEqual(classification)
   })
 })

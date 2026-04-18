@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { aggregateBundle } from '@auctor/shared/aggregate'
+import type { ClassifiedWorkUnit } from '@auctor/shared/api-types'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import type { AuthorConsideredItems, RepoReport } from '@auctor/shared/report'
 import {
@@ -8,6 +9,7 @@ import {
   type PerRepoCommitDetail,
   type PerRepoScoredUnit,
 } from '../analyze-aggregate'
+import { classifyWorkUnits } from '../api-client'
 import { loadBundle } from '../bundle'
 import { resolveCommitsToGithubAuthors } from '../git/authors'
 import { getDiffForCommits } from '../git/diff'
@@ -161,20 +163,31 @@ async function analyzeSingleRepo(
     }),
   )
 
-  const classificationMap = new Map<string, Classification>()
-  for (const unit of hydratedUnits) {
-    classificationMap.set(unit.id, {
-      type: 'feature',
-      difficulty: 'medium',
-      impact_score: 5,
-      reasoning: 'default classification',
-    })
+  let classificationMap = new Map<string, Classification>()
+  if (bundle.server_url) {
+    const response = await classifyWorkUnits(
+      bundle.server_url,
+      repo.path,
+      hydratedUnits,
+    )
+    classificationMap = buildClassificationMap(response.classifications)
+  } else {
+    for (const unit of hydratedUnits) {
+      classificationMap.set(unit.id, {
+        type: 'feature',
+        difficulty: 'medium',
+        impact_score: 5,
+        reasoning: 'default classification',
+      })
+    }
   }
 
   const scored: PerRepoScoredUnit[] = []
   for (const unit of hydratedUnits) {
     const classification = classificationMap.get(unit.id)
-    if (!classification) continue
+    if (!classification) {
+      throw new Error(`Missing classification for work unit ${unit.id}`)
+    }
     const unitScore = calculateUnitScore({
       net_loc: unit.net,
       difficulty: classification.difficulty,
@@ -200,6 +213,12 @@ async function analyzeSingleRepo(
   }
 
   return scored
+}
+
+export function buildClassificationMap(
+  classifications: ClassifiedWorkUnit[],
+): Map<string, Classification> {
+  return new Map(classifications.map((item) => [item.id, item.classification]))
 }
 
 function buildCommitDetailsForUnit(
