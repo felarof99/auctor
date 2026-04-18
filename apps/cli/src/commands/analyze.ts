@@ -163,15 +163,19 @@ async function analyzeSingleRepo(
     }),
   )
 
-  let classificationMap = new Map<string, Classification>()
+  let classifications: Classification[]
   if (bundle.server_url) {
     const response = await classifyWorkUnits(
       bundle.server_url,
       repo.path,
       hydratedUnits,
     )
-    classificationMap = buildClassificationMap(response.classifications)
+    classifications = buildClassificationsForUnits(
+      hydratedUnits,
+      response.classifications,
+    )
   } else {
+    const classificationMap = new Map<string, Classification>()
     for (const unit of hydratedUnits) {
       classificationMap.set(unit.id, {
         type: 'feature',
@@ -180,14 +184,18 @@ async function analyzeSingleRepo(
         reasoning: 'default classification',
       })
     }
+    classifications = hydratedUnits.map((unit) => {
+      const classification = classificationMap.get(unit.id)
+      if (!classification) {
+        throw new Error(`Missing classification for work unit ${unit.id}`)
+      }
+      return classification
+    })
   }
 
   const scored: PerRepoScoredUnit[] = []
-  for (const unit of hydratedUnits) {
-    const classification = classificationMap.get(unit.id)
-    if (!classification) {
-      throw new Error(`Missing classification for work unit ${unit.id}`)
-    }
+  for (const [index, unit] of hydratedUnits.entries()) {
+    const classification = classifications[index]
     const unitScore = calculateUnitScore({
       net_loc: unit.net,
       difficulty: classification.difficulty,
@@ -218,7 +226,35 @@ async function analyzeSingleRepo(
 export function buildClassificationMap(
   classifications: ClassifiedWorkUnit[],
 ): Map<string, Classification> {
-  return new Map(classifications.map((item) => [item.id, item.classification]))
+  const map = new Map<string, Classification>()
+  for (const item of classifications) {
+    if (map.has(item.id)) {
+      throw new Error(`Duplicate classification for work unit ${item.id}`)
+    }
+    map.set(item.id, item.classification)
+  }
+  return map
+}
+
+export function buildClassificationsForUnits(
+  units: WorkUnit[],
+  returned: ClassifiedWorkUnit[],
+): Classification[] {
+  if (returned.length !== units.length) {
+    throw new Error(
+      `Expected ${units.length} classifications but received ${returned.length}`,
+    )
+  }
+
+  return units.map((unit, index) => {
+    const item = returned[index]
+    if (!item || item.id !== unit.id) {
+      throw new Error(
+        `Classification response mismatch at index ${index}: expected work unit ${unit.id} but received ${item?.id ?? 'missing'}`,
+      )
+    }
+    return item.classification
+  })
 }
 
 function buildCommitDetailsForUnit(

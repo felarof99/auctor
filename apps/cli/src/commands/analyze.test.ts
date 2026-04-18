@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import type { ClassifiedWorkUnit } from '@auctor/shared/api-types'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
-import { buildClassificationMap, buildConsideredItemsForUnit } from './analyze'
+import {
+  buildClassificationMap,
+  buildClassificationsForUnits,
+  buildConsideredItemsForUnit,
+} from './analyze'
 
 function makeUnit(overrides: Partial<WorkUnit> = {}): WorkUnit {
   return {
@@ -16,6 +20,18 @@ function makeUnit(overrides: Partial<WorkUnit> = {}): WorkUnit {
     insertions: 10,
     deletions: 2,
     net: 8,
+    ...overrides,
+  }
+}
+
+function makeClassification(
+  overrides: Partial<Classification> = {},
+): Classification {
+  return {
+    type: 'feature',
+    difficulty: 'medium',
+    impact_score: 5,
+    reasoning: 'test classification',
     ...overrides,
   }
 }
@@ -106,16 +122,79 @@ describe('buildConsideredItemsForUnit', () => {
 
 describe('buildClassificationMap', () => {
   test('uses returned classifier results by work unit id', () => {
-    const classification: Classification = {
+    const classification = makeClassification({
       type: 'bugfix',
       difficulty: 'hard',
       impact_score: 8,
       reasoning: 'Fixes branch-aware analysis',
-    }
+    })
     const returned: ClassifiedWorkUnit[] = [{ id: 'unit-1', classification }]
 
     const map = buildClassificationMap(returned)
 
     expect(map.get('unit-1')).toEqual(classification)
+  })
+
+  test('throws on duplicate returned ids', () => {
+    const returned: ClassifiedWorkUnit[] = [
+      { id: 'unit-1', classification: makeClassification() },
+      {
+        id: 'unit-1',
+        classification: makeClassification({ type: 'bugfix' }),
+      },
+    ]
+
+    expect(() => buildClassificationMap(returned)).toThrow(
+      'Duplicate classification for work unit unit-1',
+    )
+  })
+})
+
+describe('buildClassificationsForUnits', () => {
+  test('preserves ordered classifier results for duplicate work unit ids', () => {
+    const first = makeClassification({
+      type: 'feature',
+      reasoning: 'branch-day result',
+    })
+    const second = makeClassification({
+      type: 'bugfix',
+      reasoning: 'pr result',
+    })
+    const units = [
+      makeUnit({ id: 'shared-sha', kind: 'branch-day' }),
+      makeUnit({ id: 'shared-sha', kind: 'pr' }),
+    ]
+    const returned: ClassifiedWorkUnit[] = [
+      { id: 'shared-sha', classification: first },
+      { id: 'shared-sha', classification: second },
+    ]
+
+    expect(buildClassificationsForUnits(units, returned)).toEqual([
+      first,
+      second,
+    ])
+  })
+
+  test('throws on missing classifier response', () => {
+    const units = [makeUnit({ id: 'unit-1' }), makeUnit({ id: 'unit-2' })]
+    const returned: ClassifiedWorkUnit[] = [
+      { id: 'unit-1', classification: makeClassification() },
+    ]
+
+    expect(() => buildClassificationsForUnits(units, returned)).toThrow(
+      'Expected 2 classifications but received 1',
+    )
+  })
+
+  test('throws on mismatched classifier response order', () => {
+    const units = [makeUnit({ id: 'unit-1' }), makeUnit({ id: 'unit-2' })]
+    const returned: ClassifiedWorkUnit[] = [
+      { id: 'unit-1', classification: makeClassification() },
+      { id: 'unit-3', classification: makeClassification() },
+    ]
+
+    expect(() => buildClassificationsForUnits(units, returned)).toThrow(
+      'Classification response mismatch at index 1: expected work unit unit-2 but received unit-3',
+    )
   })
 })
