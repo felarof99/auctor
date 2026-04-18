@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { Classification } from '@auctor/shared/classification'
 import { Hono } from 'hono'
 import { ClassificationCache } from '../classifier/cache'
+import type { ClassifierConfig } from '../classifier/config'
 import { classifyRoute, createClassifyRoute } from './classify'
 
 const app = new Hono()
@@ -59,6 +60,62 @@ function createTestRoute(classify: () => Promise<Classification>): {
   )
 
   return { app, cache }
+}
+
+function createRouteWithDependencies(
+  dependencies: Parameters<typeof createClassifyRoute>[0],
+): {
+  app: Hono
+  cache: ClassificationCache
+} {
+  const dir = mkTmp()
+  const cache = new ClassificationCache(join(dir, 'cache.sqlite'))
+  caches.push(cache)
+
+  const app = new Hono()
+  app.route(
+    '/api',
+    createClassifyRoute({
+      cache,
+      ...dependencies,
+    }),
+  )
+
+  return { app, cache }
+}
+
+function localConfig(
+  overrides: Partial<ClassifierConfig['local']> = {},
+): ClassifierConfig {
+  return {
+    backend: 'local-agent',
+    local: {
+      executors: [{ type: 'claude', command: 'claude', model: 'sonnet' }],
+      maxParallel: 2,
+      timeoutMs: 1000,
+      repairAttempts: 1,
+      skillPath: '/tmp/classifier-skill',
+      extraSkillPaths: [],
+      ...overrides,
+    },
+  }
+}
+
+function workUnit(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'unit-1',
+    kind: 'branch-day' as const,
+    author: 'dev@example.com',
+    branch: 'main',
+    date: '2026-04-18',
+    commit_shas: ['abc123'],
+    commit_messages: ['change'],
+    diff: 'diff --git a/file.ts b/file.ts\n+change',
+    insertions: 1,
+    deletions: 0,
+    net: 1,
+    ...overrides,
+  }
 }
 
 afterEach(() => {
@@ -167,5 +224,166 @@ describe('POST /api/classify', () => {
       classifications[1],
     )
     expect(classifyCalls).toBe(2)
+  })
+
+  test('selects local-agent backend and returns classifications in request order', async () => {
+    const repoPath = await mkGitRepo()
+    const calls: string[] = []
+    const classifications = new Map<string, Classification>([
+      [
+        'unit-1',
+        {
+          type: 'feature',
+          difficulty: 'medium',
+          impact_score: 7,
+          reasoning: 'first local result',
+        },
+      ],
+      [
+        'unit-2',
+        {
+          type: 'bugfix',
+          difficulty: 'easy',
+          impact_score: 3,
+          reasoning: 'second local result',
+        },
+      ],
+    ])
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => localConfig(),
+      classifyWorkUnit: async () => {
+        throw new Error('bedrock should not be called')
+      },
+      createLocalBackend: async () => ({
+        cacheContext: {
+          backend: 'local-agent',
+          executor: 'executors:hash-a',
+          model: null,
+          effort: null,
+          promptVersion: 'local-agent-v1',
+          skillBundleHash: 'skill-hash-a',
+        },
+        async classifyMany({ workUnits }) {
+          calls.push(...workUnits.map((unit) => unit.id))
+          return classifications
+        },
+      }),
+    })
+
+    const res = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [workUnit({ id: 'unit-1' }), workUnit({ id: 'unit-2' })],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      classifications: [
+        { id: 'unit-1', classification: classifications.get('unit-1') },
+        { id: 'unit-2', classification: classifications.get('unit-2') },
+      ],
+    })
+    expect(calls).toEqual(['unit-1', 'unit-2'])
+  })
+
+  test('returns 500 without fallback classification when local-agent fails', async () => {
+    const repoPath = await mkGitRepo()
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => localConfig(),
+      createLocalBackend: async () => ({
+        cacheContext: {
+          backend: 'local-agent',
+          executor: 'executors:hash-a',
+          model: null,
+          effort: null,
+          promptVersion: 'local-agent-v1',
+          skillBundleHash: 'skill-hash-a',
+        },
+        async classifyMany() {
+          throw new Error('local executor crashed')
+        },
+      }),
+    })
+
+    const res = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [workUnit()],
+      }),
+    })
+
+    expect(res.status).toBe(500)
+    const json = await res.json()
+    expect(json.error).toContain('local executor crashed')
+    expect(json.classifications).toBeUndefined()
+  })
+
+  test('does not reuse local-agent cached classifications across skill or config changes', async () => {
+    const repoPath = await mkGitRepo()
+    let backendCalls = 0
+    let skillBundleHash = 'skill-hash-a'
+    let executorSignature = 'executors:hash-a'
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => localConfig(),
+      createLocalBackend: async () => ({
+        cacheContext: {
+          backend: 'local-agent',
+          executor: executorSignature,
+          model: null,
+          effort: null,
+          promptVersion: 'local-agent-v1',
+          skillBundleHash,
+        },
+        async classifyMany({ workUnits }) {
+          backendCalls += 1
+          return new Map(
+            workUnits.map((unit) => [
+              unit.id,
+              {
+                type: 'feature',
+                difficulty: 'medium',
+                impact_score: 5,
+                reasoning: `${skillBundleHash}:${executorSignature}`,
+              } satisfies Classification,
+            ]),
+          )
+        },
+      }),
+    })
+    const unit = workUnit()
+
+    const first = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [unit],
+      }),
+    })
+    skillBundleHash = 'skill-hash-b'
+    executorSignature = 'executors:hash-b'
+    const second = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [unit],
+      }),
+    })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(
+      (await first.json()).classifications[0].classification.reasoning,
+    ).toBe('skill-hash-a:executors:hash-a')
+    expect(
+      (await second.json()).classifications[0].classification.reasoning,
+    ).toBe('skill-hash-b:executors:hash-b')
+    expect(backendCalls).toBe(2)
   })
 })
