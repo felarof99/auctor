@@ -76,7 +76,7 @@ function readExecutors(
         ...(env.LOCAL_CLASSIFIER_CLAUDE_EFFORT
           ? { effort: env.LOCAL_CLASSIFIER_CLAUDE_EFFORT }
           : {}),
-        maxTurns: readPositiveInt(env.LOCAL_CLASSIFIER_CLAUDE_MAX_TURNS, 2),
+        maxTurns: readPositiveInt(env.LOCAL_CLASSIFIER_CLAUDE_MAX_TURNS, 4),
         skipPermissions: readBool(
           env.LOCAL_CLASSIFIER_CLAUDE_SKIP_PERMISSIONS,
           true,

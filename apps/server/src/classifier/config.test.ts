@@ -16,7 +16,7 @@ describe('loadClassifierConfig', () => {
       {
         type: 'claude',
         command: 'claude',
-        maxTurns: 2,
+        maxTurns: 4,
         skipPermissions: true,
       },
     ])
