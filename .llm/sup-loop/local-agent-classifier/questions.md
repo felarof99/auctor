@@ -26,13 +26,13 @@
 
 6. How much Paperclip architecture should be copied?
 
-**Answer:** [grounded] Copy the adapter pattern, child-process invocation, JSONL parsing, timeout handling, and bounded queue ideas. Do not copy heartbeats, persistent sessions, skills bundles, issue wakeups, or workspace lifecycle. Auctor classification is request/response batch work, not an ongoing autonomous task runner.
+**Answer:** [grounded] Copy the adapter pattern, child-process invocation, JSONL parsing, timeout handling, bounded queue ideas, and skill-bundle injection. Do not copy heartbeats, persistent sessions, issue wakeups, or workspace lifecycle. Auctor classification is request/response batch work, not an ongoing autonomous task runner.
 
 ## Batch 3
 
 7. How should local repo context be provided to Claude Code and Codex?
 
-**Answer:** [grounded] The server route already resolves a `repoDir`. For local analysis, the CLI should send the repo path as explicit local context, and the server should prefer that path over a clone URL when present. Each executor process should run with `cwd` set to a scratch worktree derived from that repo so agents can inspect files and git history without touching the user's active working tree.
+**Answer:** [grounded] The CLI should send `repo_path` as explicit local context, and the server should require that path to be a git repo. There should be no clone/pull fallback and no temp cwd fallback. Each executor process should run with `cwd` set directly to `repo_path`, with read-only behavior enforced by the classifier skill instructions.
 
 8. Should local executors run concurrently per work unit or should one long agent session classify the whole batch?
 
@@ -50,7 +50,7 @@
 
 11. What should happen when an executor is missing, logged out, times out, or returns invalid JSON?
 
-**Answer:** [default] Treat missing global executor configuration as a route-level configuration error. Treat per-unit execution failures as classification failures that produce the existing fallback classification with a precise reasoning string, while logging the executor, exit code, stderr summary, and timeout state. Invalid JSON should get one repair retry before fallback.
+**Answer:** [default] Local-agent mode should be strict. Treat missing executor configuration, spawn failures, auth failures, timeouts, invalid JSON after repair, schema failures, and invalid repo paths as errors that stop classification and make `auctor analyze` exit nonzero. Existing default classifications should remain only for no-classifier mode.
 
 12. Should sessions be resumed across classifications?
 

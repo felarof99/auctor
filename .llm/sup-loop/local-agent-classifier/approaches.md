@@ -2,14 +2,15 @@
 
 ## Recommended: Local Server Backend With Child-Process Executors
 
-Keep the classifier service boundary and add a `local-agent` backend inside `apps/server`. The server receives work units through the existing `/api/classify` route, resolves the local repo path, schedules units through a bounded pool, and invokes either `claude -p` or `codex exec` as child processes. The CLI starts using `bundle.server_url` for classifications and passes local repo path context when available.
+Keep the classifier service boundary and add a `local-agent` backend inside `apps/server`. The server receives work units through the existing `/api/classify` route, requires a local `repo_path`, schedules units through a bounded pool, injects the `auctor-classifier` skill plus configured extra skills, and invokes either `claude -p` or `codex exec` as child processes. The CLI starts using `bundle.server_url` for classifications and passes local repo path context.
 
 Pros:
 
 - Reuses the existing Hono route, `RepoManager`, `ClassificationCache`, and shared API types.
 - Keeps Bedrock and local-agent backends behind the same `classifyWorkUnit` style contract.
 - Lets the user run the classifier locally by starting the server on the Mac Studio and setting `server_url: http://localhost:3001`.
-- Keeps local executor configuration server-side instead of expanding every bundle YAML.
+- Keeps local executor and skill configuration server-side instead of expanding every bundle YAML.
+- Lets the classifier rubric live as a reusable skill instead of only as inline prompt text.
 - Allows the server to enforce a global max parallelism cap of 10.
 
 Cons:
@@ -17,6 +18,7 @@ Cons:
 - Requires the local server process to be running during `auctor analyze`.
 - The CLI still has a network hop, even when both processes are on the same machine.
 - `server_url` is currently unused in analysis, so the implementation must wire that path before classifications affect scoring.
+- Local-agent mode is intentionally local-only; invalid `repo_path` stops the run instead of falling back to clone/diff-only behavior.
 
 ## Alternative: CLI-In-Process Local Orchestrator
 
@@ -52,6 +54,6 @@ Cons:
 
 ## Pick
 
-Pick the local server backend with child-process executors.
+Pick the local server backend with skill-driven child-process executors.
 
-Reason: it is the smallest change that meets the requirement: local machine execution, Claude Code and Codex executor support, bounded parallelism up to 10, local repo context, and reuse of existing server classifier code. It also leaves a clean path to extract a shared classifier package later if the CLI should run local agents without a server.
+Reason: it is the smallest change that meets the requirement: local machine execution, Claude Code and Codex executor support, classifier-as-skill behavior, bounded parallelism up to 10, local repo context, strict failure semantics, and reuse of existing server classifier code. It also leaves a clean path to extract a shared classifier package later if the CLI should run local agents without a server.
