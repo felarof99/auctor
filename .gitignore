@@ -66,6 +66,7 @@ node_modules/
 dist
 packages/*/dist
 /build/
+/bin/
 
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test

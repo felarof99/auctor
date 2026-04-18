@@ -14,7 +14,9 @@
     "lint:fix": "bunx biome check --write --unsafe",
     "clean": "rimraf dist",
     "dashboard:sync": "bun apps/dashboard/scripts/sync-data.ts",
-    "dashboard:dev": "bun run dashboard:sync && bun run --cwd apps/dashboard dev"
+    "dashboard:dev": "bun run dashboard:sync && bun run --cwd apps/dashboard dev",
+    "cli:build": "bun build ./apps/cli/src/index.ts --compile --outfile ./bin/auctor",
+    "cli:install": "bun run cli:build && mkdir -p \"$HOME/.local/bin\" && mv ./bin/auctor \"$HOME/.local/bin/auctor\" && echo \"Installed auctor to $HOME/.local/bin/auctor\""
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.11",
