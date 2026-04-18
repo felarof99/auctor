@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
 import type { LocalExecutorConfig } from '../config'
 import { buildLocalAgentClassificationPrompt } from '../prompt'
@@ -24,7 +25,7 @@ export interface CreateLocalExecutorInput {
   config: LocalExecutorConfig
   timeoutMs: number
   claudeSkillBundleDir: string
-  codexHomeDir: string
+  createCodexHome: () => Promise<string>
 }
 
 const SAFE_PARENT_ENV_NAMES = new Set([
@@ -154,7 +155,7 @@ export function createLocalExecutor(
           workUnit,
           config,
           timeoutMs: input.timeoutMs,
-          codexHomeDir: input.codexHomeDir,
+          createCodexHome: input.createCodexHome,
         })
       },
     }
@@ -194,7 +195,7 @@ async function classifyWithCodex(input: {
   workUnit: WorkUnit
   config: LocalExecutorConfig
   timeoutMs: number
-  codexHomeDir: string
+  createCodexHome: () => Promise<string>
 }): Promise<Classification> {
   const prompt = buildLocalAgentClassificationPrompt(input.workUnit)
   const args = buildCodexArgs({
@@ -202,18 +203,24 @@ async function classifyWithCodex(input: {
     effort: input.config.effort,
     bypassApprovals: input.config.bypassApprovals,
   })
-  const { stdout } = await runLocalProcess({
-    command: input.config.command,
-    args,
-    cwd: input.repoPath,
-    env: {
-      CODEX_HOME: input.codexHomeDir,
-    },
-    prompt,
-    timeoutMs: input.timeoutMs,
-  })
+  const codexHomeDir = await input.createCodexHome()
 
-  return parseClassificationJson(parseCodexJsonl(stdout).finalText)
+  try {
+    const { stdout } = await runLocalProcess({
+      command: input.config.command,
+      args,
+      cwd: input.repoPath,
+      env: {
+        CODEX_HOME: codexHomeDir,
+      },
+      prompt,
+      timeoutMs: input.timeoutMs,
+    })
+
+    return parseClassificationJson(parseCodexJsonl(stdout).finalText)
+  } finally {
+    rmSync(codexHomeDir, { recursive: true, force: true })
+  }
 }
 
 function formatCommand(command: string, args: string[]): string {

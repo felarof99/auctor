@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import {
   chmodSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   realpathSync,
   rmSync,
@@ -247,7 +249,7 @@ console.log(JSON.stringify({
       },
       timeoutMs: 5000,
       claudeSkillBundleDir: skillBundleDir,
-      codexHomeDir: join(makeTempDir(), 'unused-codex-home'),
+      createCodexHome: async () => join(makeTempDir(), 'unused-codex-home'),
     })
 
     const classification = await executor.classify({
@@ -267,6 +269,8 @@ console.log(JSON.stringify({
   test('creates a Codex executor that sets CODEX_HOME, prompts, parses output, and validates JSON', async () => {
     const repoPath = makeTempDir()
     const codexHomeDir = join(makeTempDir(), 'codex-home')
+    mkdirSync(join(codexHomeDir, 'skills'), { recursive: true })
+    writeFileSync(join(codexHomeDir, 'skills', 'marker.txt'), 'copied skill')
     const script = writeExecutable(
       makeTempDir(),
       'fake-codex.ts',
@@ -281,9 +285,13 @@ if (process.env.CODEX_HOME !== ${JSON.stringify(codexHomeDir)}) {
   console.error('wrong CODEX_HOME')
   process.exit(3)
 }
+if (await Bun.file(process.env.CODEX_HOME + '/skills/marker.txt').text() !== 'copied skill') {
+  console.error('missing isolated codex home files')
+  process.exit(4)
+}
 if (!prompt.includes('Use the auctor-classifier skill') || !prompt.includes('unit-1')) {
   console.error('missing prompt content')
-  process.exit(4)
+  process.exit(5)
 }
 if (JSON.stringify(args) !== JSON.stringify(${JSON.stringify([
         'exec',
@@ -296,7 +304,7 @@ if (JSON.stringify(args) !== JSON.stringify(${JSON.stringify([
         '-',
       ])})) {
   console.error('wrong codex args')
-  process.exit(5)
+  process.exit(6)
 }
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }))
 console.log(JSON.stringify({
@@ -323,7 +331,7 @@ console.log(JSON.stringify({
       },
       timeoutMs: 5000,
       claudeSkillBundleDir: join(makeTempDir(), 'unused-claude-skills'),
-      codexHomeDir,
+      createCodexHome: async () => codexHomeDir,
     })
 
     const classification = await executor.classify({
@@ -338,5 +346,6 @@ console.log(JSON.stringify({
       impact_score: 4,
       reasoning: 'classified by fake codex',
     })
+    expect(existsSync(codexHomeDir)).toBe(false)
   })
 })

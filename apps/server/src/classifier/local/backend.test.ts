@@ -22,16 +22,17 @@ function localConfig(
 }
 
 describe('createLocalAgentClassifierBackend', () => {
-  test('passes Codex home root to executors after materializing skills', async () => {
+  test('passes an isolated Codex home factory to executors', async () => {
     const config = localConfig()
     const signature = buildLocalAgentConfigSignature(config, {
       codexConfigHash: 'codex-config-hash',
     })
-    const expectedHomeDir = join(
+    const expectedHomePrefix = join(
       '/tmp/auctor-test-cache',
-      'codex',
+      'codex-runs',
       'bundle-hash',
       signature,
+      'home-',
     )
     let materializedHomeDir = ''
     let executorCodexHomeDir = ''
@@ -55,10 +56,10 @@ describe('createLocalAgentClassifierBackend', () => {
       },
       getSanitizedCodexConfigHash: () => 'codex-config-hash',
       createLocalExecutor: (input) => {
-        executorCodexHomeDir = input.codexHomeDir
         return {
           type: 'codex',
           async classify() {
+            executorCodexHomeDir = await input.createCodexHome()
             return classification
           },
         }
@@ -84,8 +85,8 @@ describe('createLocalAgentClassifierBackend', () => {
       ],
     })
 
-    expect(materializedHomeDir).toBe(expectedHomeDir)
-    expect(executorCodexHomeDir).toBe(expectedHomeDir)
+    expect(materializedHomeDir).toBe(executorCodexHomeDir)
+    expect(executorCodexHomeDir.startsWith(expectedHomePrefix)).toBe(true)
     expect(result.get('unit-1')).toEqual(classification)
   })
 

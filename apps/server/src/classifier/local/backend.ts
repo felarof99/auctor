@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Classification, WorkUnit } from '@auctor/shared/classification'
@@ -106,15 +107,24 @@ export async function createLocalAgentClassifierBackend(
     bundle,
     join(cacheRoot, 'claude'),
   )
-  const codexHomeDir = join(cacheRoot, 'codex', bundle.hash, configSignature)
-  await materializeCodex(bundle, codexHomeDir)
+  const codexRunRoot = join(
+    cacheRoot,
+    'codex-runs',
+    bundle.hash,
+    configSignature,
+  )
 
   const executors = config.executors.map((executorConfig) =>
     createExecutor({
       config: executorConfig,
       timeoutMs: config.timeoutMs,
       claudeSkillBundleDir,
-      codexHomeDir,
+      createCodexHome: async () => {
+        mkdirSync(codexRunRoot, { recursive: true })
+        const codexHomeDir = mkdtempSync(join(codexRunRoot, 'home-'))
+        await materializeCodex(bundle, codexHomeDir)
+        return codexHomeDir
+      },
     }),
   )
 
