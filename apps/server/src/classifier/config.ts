@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 export type ClassifierBackendName = 'bedrock' | 'local-agent'
 export type LocalExecutorType = 'claude' | 'codex'
 
@@ -22,6 +24,10 @@ export interface ClassifierConfig {
     extraSkillPaths: string[]
   }
 }
+
+const DEFAULT_CLASSIFIER_SKILL_PATH = fileURLToPath(
+  new URL('../../skills/auctor-classifier', import.meta.url),
+)
 
 function readBackend(value: string | undefined): ClassifierBackendName {
   const backend = value ?? 'bedrock'
@@ -110,8 +116,7 @@ export function loadClassifierConfig(
         readPositiveInt(env.LOCAL_CLASSIFIER_TIMEOUT_SECONDS, 240) * 1000,
       repairAttempts: readPositiveInt(env.LOCAL_CLASSIFIER_REPAIR_ATTEMPTS, 1),
       skillPath:
-        env.LOCAL_CLASSIFIER_SKILL_PATH ||
-        './apps/server/skills/auctor-classifier',
+        env.LOCAL_CLASSIFIER_SKILL_PATH || DEFAULT_CLASSIFIER_SKILL_PATH,
       extraSkillPaths: splitCsv(env.LOCAL_CLASSIFIER_EXTRA_SKILL_PATHS),
     },
   }

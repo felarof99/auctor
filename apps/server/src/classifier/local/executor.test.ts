@@ -52,8 +52,12 @@ afterEach(() => {
 })
 
 describe('runLocalProcess', () => {
-  test('runs in cwd, merges env, writes stdin, and returns stdout/stderr', async () => {
+  test('runs in cwd, passes safe and explicit env, writes stdin, and returns stdout/stderr', async () => {
     const dir = makeTempDir()
+    const originalSecret = process.env.AUCTOR_TEST_PARENT_SECRET
+    const originalUnsafe = process.env.AUCTOR_TEST_UNSAFE_OVERRIDE
+    process.env.AUCTOR_TEST_PARENT_SECRET = 'parent-secret'
+    process.env.AUCTOR_TEST_UNSAFE_OVERRIDE = 'parent-unsafe'
     const script = writeExecutable(
       dir,
       'inspect-process.ts',
@@ -65,26 +69,46 @@ console.log(JSON.stringify({
   args: Bun.argv.slice(2),
   prompt,
   inheritedPath: typeof process.env.PATH === 'string' && process.env.PATH.length > 0,
+  inheritedParentSecret: process.env.AUCTOR_TEST_PARENT_SECRET ?? null,
+  explicitUnsafeOverride: process.env.AUCTOR_TEST_UNSAFE_OVERRIDE ?? null,
 }))
 `,
     )
 
-    const result = await runLocalProcess({
-      command: script,
-      args: ['one', 'two'],
-      cwd: dir,
-      env: { EXTRA_FLAG: 'merged' },
-      prompt: 'hello from stdin',
-      timeoutMs: 5000,
-    })
+    try {
+      const result = await runLocalProcess({
+        command: script,
+        args: ['one', 'two'],
+        cwd: dir,
+        env: {
+          AUCTOR_TEST_UNSAFE_OVERRIDE: 'explicit-unsafe',
+          EXTRA_FLAG: 'merged',
+        },
+        prompt: 'hello from stdin',
+        timeoutMs: 5000,
+      })
 
-    expect(result.stderr.trim()).toBe('merged')
-    expect(JSON.parse(result.stdout)).toEqual({
-      cwd: dir,
-      args: ['one', 'two'],
-      prompt: 'hello from stdin',
-      inheritedPath: true,
-    })
+      expect(result.stderr.trim()).toBe('merged')
+      expect(JSON.parse(result.stdout)).toEqual({
+        cwd: dir,
+        args: ['one', 'two'],
+        prompt: 'hello from stdin',
+        inheritedPath: true,
+        inheritedParentSecret: null,
+        explicitUnsafeOverride: 'explicit-unsafe',
+      })
+    } finally {
+      if (originalSecret === undefined) {
+        delete process.env.AUCTOR_TEST_PARENT_SECRET
+      } else {
+        process.env.AUCTOR_TEST_PARENT_SECRET = originalSecret
+      }
+      if (originalUnsafe === undefined) {
+        delete process.env.AUCTOR_TEST_UNSAFE_OVERRIDE
+      } else {
+        process.env.AUCTOR_TEST_UNSAFE_OVERRIDE = originalUnsafe
+      }
+    }
   })
 
   test('throws command, code, and first non-empty stderr line on non-zero exit', async () => {

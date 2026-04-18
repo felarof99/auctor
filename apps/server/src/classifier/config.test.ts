@@ -1,9 +1,15 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { loadClassifierConfig } from './config'
 
 describe('loadClassifierConfig', () => {
   test('defaults classifier config', () => {
     const config = loadClassifierConfig({})
+    const expectedSkillPath = fileURLToPath(
+      new URL('../../skills/auctor-classifier', import.meta.url),
+    )
 
     expect(config.backend).toBe('bedrock')
     expect(config.local.executors).toEqual([
@@ -17,9 +23,8 @@ describe('loadClassifierConfig', () => {
     expect(config.local.maxParallel).toBe(4)
     expect(config.local.timeoutMs).toBe(240000)
     expect(config.local.repairAttempts).toBe(1)
-    expect(config.local.skillPath).toBe(
-      './apps/server/skills/auctor-classifier',
-    )
+    expect(config.local.skillPath).toBe(expectedSkillPath)
+    expect(existsSync(join(config.local.skillPath, 'SKILL.md'))).toBe(true)
     expect(config.local.extraSkillPaths).toEqual([])
   })
 

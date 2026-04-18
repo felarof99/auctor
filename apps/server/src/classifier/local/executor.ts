@@ -27,16 +27,24 @@ export interface CreateLocalExecutorInput {
   codexHomeDir: string
 }
 
+const SAFE_PARENT_ENV_NAMES = new Set([
+  'HOME',
+  'LANG',
+  'LOGNAME',
+  'PATH',
+  'SHELL',
+  'TERM',
+  'TMPDIR',
+  'USER',
+])
+
 export async function runLocalProcess(
   input: RunLocalProcessInput,
 ): Promise<RunLocalProcessResult> {
   const command = formatCommand(input.command, input.args)
   const proc = Bun.spawn([input.command, ...input.args], {
     cwd: input.cwd,
-    env: {
-      ...process.env,
-      ...input.env,
-    },
+    env: buildLocalProcessEnv(input.env),
     stdin: new Blob([input.prompt]),
     stdout: 'pipe',
     stderr: 'pipe',
@@ -89,6 +97,32 @@ function killProcess(proc: Bun.Subprocess<Blob, 'pipe', 'pipe'>): void {
       proc.kill()
     } catch {}
   }
+}
+
+function buildLocalProcessEnv(
+  overrides: Record<string, string | undefined> = {},
+): Record<string, string> {
+  const env: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && isSafeParentEnvName(key)) {
+      env[key] = value
+    }
+  }
+
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete env[key]
+    } else {
+      env[key] = value
+    }
+  }
+
+  return env
+}
+
+function isSafeParentEnvName(key: string): boolean {
+  return SAFE_PARENT_ENV_NAMES.has(key) || key.startsWith('LC_')
 }
 
 export function createLocalExecutor(
