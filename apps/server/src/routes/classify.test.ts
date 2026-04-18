@@ -217,6 +217,45 @@ describe('POST /api/classify', () => {
     expect(classifyCalls).toBe(0)
   })
 
+  test('returns 400 for duplicate work unit ids before calling classifier backend', async () => {
+    const repoPath = await mkGitRepo()
+    let configCalls = 0
+    let classifyCalls = 0
+    const { app: testApp } = createRouteWithDependencies({
+      loadConfig: () => {
+        configCalls += 1
+        return { backend: 'bedrock', local: localConfig().local }
+      },
+      classifyWorkUnit: async () => {
+        classifyCalls += 1
+        return {
+          type: 'feature',
+          difficulty: 'medium',
+          impact_score: 5,
+          reasoning: 'should not classify duplicate request ids',
+        }
+      },
+    })
+
+    const res = await testApp.request('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo_path: repoPath,
+        work_units: [
+          workUnit({ id: 'duplicate-unit', diff: 'first diff' }),
+          workUnit({ id: 'duplicate-unit', diff: 'second diff' }),
+        ],
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toContain('duplicate-unit')
+    expect(configCalls).toBe(0)
+    expect(classifyCalls).toBe(0)
+  })
+
   test('returns 200 with empty classifications for empty work_units', async () => {
     const repoPath = await mkGitRepo()
     const res = await postClassify({ repo_path: repoPath, work_units: [] })

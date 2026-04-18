@@ -28,6 +28,11 @@ export async function classifyWithLocalExecutors(
     return new Map()
   }
 
+  const duplicateId = findDuplicateWorkUnitId(input.workUnits)
+  if (duplicateId) {
+    throw new Error(`Duplicate local classifier work unit id: ${duplicateId}`)
+  }
+
   const workerCount = effectiveWorkerCount(
     input.maxParallel,
     input.workUnits.length,
@@ -88,4 +93,14 @@ function effectiveWorkerCount(
 ): number {
   const requested = Number.isFinite(maxParallel) ? Math.trunc(maxParallel) : 1
   return Math.min(workUnitCount, Math.max(1, requested))
+}
+
+function findDuplicateWorkUnitId(workUnits: WorkUnit[]): string | null {
+  const seen = new Set<string>()
+  for (const unit of workUnits) {
+    if (seen.has(unit.id)) return unit.id
+    seen.add(unit.id)
+  }
+
+  return null
 }

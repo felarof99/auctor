@@ -363,6 +363,11 @@ function parseClassifyRequest(
     return { ok: false, error: classifyRequestError(parsed.error) }
   }
 
+  const duplicateId = findDuplicateWorkUnitId(parsed.data.work_units)
+  if (duplicateId) {
+    return { ok: false, error: `duplicate work unit id: ${duplicateId}` }
+  }
+
   return { ok: true, data: parsed.data }
 }
 
@@ -378,4 +383,14 @@ function classifyRequestError(error: z.ZodError): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function findDuplicateWorkUnitId(workUnits: WorkUnit[]): string | null {
+  const seen = new Set<string>()
+  for (const unit of workUnits) {
+    if (seen.has(unit.id)) return unit.id
+    seen.add(unit.id)
+  }
+
+  return null
 }
