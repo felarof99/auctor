@@ -17,6 +17,7 @@ const SAFE_CODEX_CONFIG_KEYS = new Set([
   'model_reasoning_effort',
   'service_tier',
 ])
+const SAFE_CODEX_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'none'])
 
 export interface SkillEntry {
   name: string
@@ -113,12 +114,39 @@ function sanitizeCodexConfig(config: string): string {
     if (!match) continue
 
     const [, key, value] = match
-    if (SAFE_CODEX_CONFIG_KEYS.has(key)) {
-      lines.push(`${key} = ${value.trim()}`)
+    const sanitizedValue = sanitizeCodexConfigValue(key, value.trim())
+    if (sanitizedValue !== null) {
+      lines.push(`${key} = ${sanitizedValue}`)
     }
   }
 
   return lines.length > 0 ? `${lines.join('\n')}\n` : ''
+}
+
+function sanitizeCodexConfigValue(key: string, value: string): string | null {
+  if (!SAFE_CODEX_CONFIG_KEYS.has(key)) return null
+  if (key !== 'model_reasoning_effort') return value
+
+  const effort = readTomlStringValue(value)
+  if (effort === null) return null
+
+  const normalized = effort.toLowerCase()
+  if (SAFE_CODEX_REASONING_EFFORTS.has(normalized)) {
+    return JSON.stringify(normalized)
+  }
+  if (normalized === 'xhigh') {
+    return JSON.stringify('high')
+  }
+
+  return null
+}
+
+function readTomlStringValue(value: string): string | null {
+  const quoted = /^(?:"([^"]*)"|'([^']*)')$/.exec(value)
+  if (quoted) return quoted[1] ?? quoted[2] ?? ''
+
+  const bare = /^[A-Za-z_-]+$/.exec(value)
+  return bare ? value : null
 }
 
 function readSkill(sourceDir: string): SkillEntry {

@@ -128,7 +128,7 @@ describe('local classifier skill bundles', () => {
       join(sourceHome, 'config.toml'),
       [
         'model = "gpt-5.2-codex"',
-        'model_reasoning_effort = "high"',
+        'model_reasoning_effort = "xhigh"',
         'service_tier = "flex"',
         'approval_policy = "never"',
         '',
