@@ -5,12 +5,14 @@ export interface DailyScore {
 
 export interface ConsideredCommit {
   repo: string
+  branch?: string
   sha: string
   message: string
 }
 
 export interface ConsideredPullRequest {
   repo: string
+  branch?: string
   sha: string
   pr_number?: number
   message: string

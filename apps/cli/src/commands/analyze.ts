@@ -202,6 +202,7 @@ export function buildConsideredItemsForUnit(
       prs: [
         {
           repo: repoName,
+          branch: unit.branch,
           sha: unit.commit_shas[0] ?? '',
           ...(prNumber !== undefined ? { pr_number: prNumber } : {}),
           message,
@@ -213,6 +214,7 @@ export function buildConsideredItemsForUnit(
   return {
     commits: unit.commit_shas.map((sha, i) => ({
       repo: repoName,
+      branch: unit.branch,
       sha,
       message: unit.commit_messages[i] ?? '',
     })),

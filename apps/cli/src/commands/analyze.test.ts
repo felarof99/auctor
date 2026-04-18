@@ -27,11 +27,13 @@ describe('buildConsideredItemsForUnit', () => {
       commits: [
         {
           repo: 'browseros-main',
+          branch: 'main',
           sha: 'aaa1111',
           message: 'feat: first',
         },
         {
           repo: 'browseros-main',
+          branch: 'main',
           sha: 'bbb2222',
           message: 'fix: second',
         },
@@ -55,6 +57,7 @@ describe('buildConsideredItemsForUnit', () => {
       prs: [
         {
           repo: 'browseros-main',
+          branch: 'main',
           sha: 'ccc3333',
           pr_number: 710,
           message: 'feat: add mcp guard (#710)',
@@ -78,6 +81,7 @@ describe('buildConsideredItemsForUnit', () => {
       prs: [
         {
           repo: 'browseros-main',
+          branch: 'main',
           sha: 'ddd4444',
           message: 'merge feature branch',
         },

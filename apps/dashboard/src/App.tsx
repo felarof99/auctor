@@ -69,7 +69,9 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7)
 }
 
-function ProvenanceSection<T extends { repo: string; message: string }>({
+function ProvenanceSection<
+  T extends { repo: string; branch?: string; message: string },
+>({
   title,
   items,
   emptyText,
@@ -95,9 +97,12 @@ function ProvenanceSection<T extends { repo: string; message: string }>({
           {items.map((item, index) => (
             <div
               key={`${item.repo}-${renderIdentifier(item)}-${index}`}
-              className="grid grid-cols-[minmax(5rem,8rem)_minmax(4.5rem,6rem)_1fr] gap-3 border-border border-b px-3 py-2 text-sm last:border-b-0"
+              className="grid grid-cols-[minmax(5rem,8rem)_minmax(5rem,8rem)_minmax(4.5rem,6rem)_1fr] gap-3 border-border border-b px-3 py-2 text-sm last:border-b-0"
             >
               <div className="truncate text-muted-foreground">{item.repo}</div>
+              <div className="truncate text-muted-foreground">
+                {item.branch ?? '-'}
+              </div>
               <div className="font-mono text-muted-foreground">
                 {renderIdentifier(item)}
               </div>
