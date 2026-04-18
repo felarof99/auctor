@@ -9,6 +9,7 @@ import {
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
+  getSanitizedCodexConfigHash,
   materializeClaudeSkillBundle,
   materializeCodexSkillsHome,
   resolveSkillBundle,
@@ -237,6 +238,53 @@ describe('local classifier skill bundles', () => {
     expect(readFileSync(join(homeDir, 'config.toml'), 'utf8')).toBe(
       'model = "gpt-5.2-codex"\n',
     )
+  })
+
+  test('removes stale copied Codex config when source config disappears', async () => {
+    const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
+    const skillDir = await writeSkill(rootDir, 'auctor-classifier', {
+      'SKILL.md': '# Auctor Classifier\n',
+    })
+    await mkdir(sourceHome, { recursive: true })
+    writeFileSync(join(sourceHome, 'config.toml'), 'model = "gpt-5.2-codex"\n')
+    process.env.CODEX_HOME = sourceHome
+    const bundle = await resolveSkillBundle(skillDir, [])
+    const homeDir = join(rootDir, 'codex-home')
+
+    await materializeCodexSkillsHome(bundle, homeDir)
+
+    expect(existsSync(join(homeDir, 'config.toml'))).toBe(true)
+
+    rmSync(join(sourceHome, 'config.toml'))
+
+    await materializeCodexSkillsHome(bundle, homeDir)
+
+    expect(existsSync(join(homeDir, 'config.toml'))).toBe(false)
+  })
+
+  test('hashes sanitized Codex config for backend cache signatures', async () => {
+    const rootDir = makeTempDir()
+    const sourceHome = join(rootDir, 'source-codex-home')
+    await mkdir(sourceHome, { recursive: true })
+    process.env.CODEX_HOME = sourceHome
+
+    expect(getSanitizedCodexConfigHash()).toBeNull()
+
+    writeFileSync(
+      join(sourceHome, 'config.toml'),
+      'model = "gpt-5.2-codex"\napproval_policy = "never"\n',
+    )
+    const first = getSanitizedCodexConfigHash()
+    writeFileSync(
+      join(sourceHome, 'config.toml'),
+      'model = "gpt-5.3-codex"\napproval_policy = "never"\n',
+    )
+    const second = getSanitizedCodexConfigHash()
+
+    expect(first).toBeString()
+    expect(second).toBeString()
+    expect(second).not.toBe(first)
   })
 
   test('rejects duplicate skill names before materialization', async () => {

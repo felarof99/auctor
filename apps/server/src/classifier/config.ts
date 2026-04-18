@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import { normalizeCodexReasoningEffort } from './local/codex-config'
 
 export type ClassifierBackendName = 'bedrock' | 'local-agent'
 export type LocalExecutorType = 'claude' | 'codex'
@@ -61,6 +62,10 @@ function splitCsv(value: string | undefined): string[] {
     .filter(Boolean)
 }
 
+function readOptionalCodexReasoningEffort(value: string | undefined) {
+  return value ? normalizeCodexReasoningEffort(value) : undefined
+}
+
 function readExecutors(
   env: Record<string, string | undefined>,
 ): LocalExecutorConfig[] {
@@ -84,15 +89,16 @@ function readExecutors(
       }
     }
     if (type === 'codex') {
+      const effort = readOptionalCodexReasoningEffort(
+        env.LOCAL_CLASSIFIER_CODEX_REASONING_EFFORT,
+      )
       return {
         type,
         command: env.LOCAL_CLASSIFIER_CODEX_COMMAND || 'codex',
         ...(env.LOCAL_CLASSIFIER_CODEX_MODEL
           ? { model: env.LOCAL_CLASSIFIER_CODEX_MODEL }
           : {}),
-        ...(env.LOCAL_CLASSIFIER_CODEX_REASONING_EFFORT
-          ? { effort: env.LOCAL_CLASSIFIER_CODEX_REASONING_EFFORT }
-          : {}),
+        ...(effort ? { effort } : {}),
         bypassApprovals: readBool(
           env.LOCAL_CLASSIFIER_CODEX_BYPASS_APPROVALS,
           true,

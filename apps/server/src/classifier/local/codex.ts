@@ -1,3 +1,5 @@
+import { normalizeCodexReasoningEffort } from './codex-config'
+
 export interface CodexArgsInput {
   model?: string
   effort?: string
@@ -21,7 +23,12 @@ export function buildCodexArgs(input: CodexArgsInput): string[] {
   }
 
   if (input.effort) {
-    args.push('-c', `model_reasoning_effort=${JSON.stringify(input.effort)}`)
+    args.push(
+      '-c',
+      `model_reasoning_effort=${JSON.stringify(
+        normalizeCodexReasoningEffort(input.effort),
+      )}`,
+    )
   }
 
   args.push('-')

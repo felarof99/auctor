@@ -63,6 +63,19 @@ describe('loadClassifierConfig', () => {
     ])
   })
 
+  test('normalizes Codex xhigh reasoning effort from env to high', () => {
+    const config = loadClassifierConfig({
+      CLASSIFIER_BACKEND: 'local-agent',
+      LOCAL_CLASSIFIER_EXECUTORS: 'codex',
+      LOCAL_CLASSIFIER_CODEX_REASONING_EFFORT: 'xhigh',
+    })
+
+    expect(config.local.executors[0]).toMatchObject({
+      type: 'codex',
+      effort: 'high',
+    })
+  })
+
   test('throws for unknown backend or executor', () => {
     expect(() => loadClassifierConfig({ CLASSIFIER_BACKEND: 'other' })).toThrow(
       'Unsupported classifier backend',

@@ -28,6 +28,15 @@ describe('Codex local executor helpers', () => {
     ])
   })
 
+  test('normalizes unsupported xhigh effort before invoking Codex', () => {
+    expect(
+      buildCodexArgs({
+        effort: 'xhigh',
+        bypassApprovals: false,
+      }),
+    ).toEqual(['exec', '--json', '-c', 'model_reasoning_effort="high"', '-'])
+  })
+
   test('parses final agent message and thread id', () => {
     const stdout = [
       JSON.stringify({

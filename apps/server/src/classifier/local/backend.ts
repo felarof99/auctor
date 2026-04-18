@@ -11,6 +11,7 @@ import {
   type LocalExecutorRuntime,
 } from './orchestrator'
 import {
+  getSanitizedCodexConfigHash,
   materializeClaudeSkillBundle,
   materializeCodexSkillsHome,
   resolveSkillBundle,
@@ -35,6 +36,7 @@ export interface LocalAgentClassifierBackendOptions {
     input: CreateLocalExecutorInput,
   ) => LocalExecutorRuntime
   classifyWithLocalExecutors?: typeof classifyWithLocalExecutors
+  getSanitizedCodexConfigHash?: typeof getSanitizedCodexConfigHash
 }
 
 interface LocalAgentClassifierBackendInput {
@@ -82,9 +84,18 @@ export async function createLocalAgentClassifierBackend(
   const createExecutor = options.createLocalExecutor ?? createLocalExecutor
   const classifyMany =
     options.classifyWithLocalExecutors ?? classifyWithLocalExecutors
+  const readCodexConfigHash =
+    options.getSanitizedCodexConfigHash ?? getSanitizedCodexConfigHash
 
   const bundle = await resolveBundle(config.skillPath, config.extraSkillPaths)
-  const configSignature = buildLocalAgentConfigSignature(config)
+  const codexConfigHash = config.executors.some(
+    (executor) => executor.type === 'codex',
+  )
+    ? readCodexConfigHash()
+    : null
+  const configSignature = buildLocalAgentConfigSignature(config, {
+    codexConfigHash,
+  })
   const cacheRoot =
     options.cacheRoot ??
     process.env.LOCAL_CLASSIFIER_CACHE_DIR ??
@@ -115,6 +126,7 @@ export async function createLocalAgentClassifierBackend(
 
 export function buildLocalAgentConfigSignature(
   config: ClassifierConfig['local'],
+  context: { codexConfigHash?: string | null } = {},
 ): string {
   return createHash('sha256')
     .update(
@@ -128,6 +140,7 @@ export function buildLocalAgentConfigSignature(
           skipPermissions: executor.skipPermissions ?? null,
           bypassApprovals: executor.bypassApprovals ?? null,
         })),
+        codexConfigHash: context.codexConfigHash ?? null,
         maxParallel: config.maxParallel,
         timeoutMs: config.timeoutMs,
         repairAttempts: config.repairAttempts,

@@ -11,13 +11,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-
-const SAFE_CODEX_CONFIG_KEYS = new Set([
-  'model',
-  'model_reasoning_effort',
-  'service_tier',
-])
-const SAFE_CODEX_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'none'])
+import { sanitizeCodexConfig } from './codex-config'
 
 export interface SkillEntry {
   name: string
@@ -82,16 +76,19 @@ export async function materializeCodexSkillsHome(
 function copyCodexAuthAndConfig(homeDir: string) {
   const sourceHome = process.env.CODEX_HOME || join(homedir(), '.codex')
   const sourceAuth = join(sourceHome, 'auth.json')
+  const targetAuth = join(homeDir, 'auth.json')
   if (existsSync(sourceAuth) && statSync(sourceAuth).isFile()) {
-    copyFileIfDifferent(sourceAuth, join(homeDir, 'auth.json'))
+    copyFileIfDifferent(sourceAuth, targetAuth)
+  } else {
+    rmSync(targetAuth, { force: true })
   }
 
-  const sourceConfig = join(sourceHome, 'config.toml')
-  if (existsSync(sourceConfig) && statSync(sourceConfig).isFile()) {
-    writeFileSync(
-      join(homeDir, 'config.toml'),
-      sanitizeCodexConfig(readFileSync(sourceConfig, 'utf8')),
-    )
+  const targetConfig = join(homeDir, 'config.toml')
+  const sanitizedConfig = readSanitizedCodexConfig()
+  if (sanitizedConfig !== null) {
+    writeFileSync(targetConfig, sanitizedConfig)
+  } else {
+    rmSync(targetConfig, { force: true })
   }
 }
 
@@ -102,51 +99,21 @@ function copyFileIfDifferent(sourcePath: string, targetPath: string) {
   copyFileSync(sourcePath, targetPath)
 }
 
-function sanitizeCodexConfig(config: string): string {
-  const lines: string[] = []
-
-  for (const line of config.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    if (trimmed.startsWith('[')) break
-
-    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(trimmed)
-    if (!match) continue
-
-    const [, key, value] = match
-    const sanitizedValue = sanitizeCodexConfigValue(key, value.trim())
-    if (sanitizedValue !== null) {
-      lines.push(`${key} = ${sanitizedValue}`)
-    }
-  }
-
-  return lines.length > 0 ? `${lines.join('\n')}\n` : ''
+export function getSanitizedCodexConfigHash(): string | null {
+  const sanitizedConfig = readSanitizedCodexConfig()
+  return sanitizedConfig === null
+    ? null
+    : createHash('sha256').update(sanitizedConfig).digest('hex')
 }
 
-function sanitizeCodexConfigValue(key: string, value: string): string | null {
-  if (!SAFE_CODEX_CONFIG_KEYS.has(key)) return null
-  if (key !== 'model_reasoning_effort') return value
-
-  const effort = readTomlStringValue(value)
-  if (effort === null) return null
-
-  const normalized = effort.toLowerCase()
-  if (SAFE_CODEX_REASONING_EFFORTS.has(normalized)) {
-    return JSON.stringify(normalized)
-  }
-  if (normalized === 'xhigh') {
-    return JSON.stringify('high')
+function readSanitizedCodexConfig(): string | null {
+  const sourceHome = process.env.CODEX_HOME || join(homedir(), '.codex')
+  const sourceConfig = join(sourceHome, 'config.toml')
+  if (!existsSync(sourceConfig) || !statSync(sourceConfig).isFile()) {
+    return null
   }
 
-  return null
-}
-
-function readTomlStringValue(value: string): string | null {
-  const quoted = /^(?:"([^"]*)"|'([^']*)')$/.exec(value)
-  if (quoted) return quoted[1] ?? quoted[2] ?? ''
-
-  const bare = /^[A-Za-z_-]+$/.exec(value)
-  return bare ? value : null
+  return sanitizeCodexConfig(readFileSync(sourceConfig, 'utf8'))
 }
 
 function readSkill(sourceDir: string): SkillEntry {

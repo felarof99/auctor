@@ -24,7 +24,9 @@ function localConfig(
 describe('createLocalAgentClassifierBackend', () => {
   test('passes Codex home root to executors after materializing skills', async () => {
     const config = localConfig()
-    const signature = buildLocalAgentConfigSignature(config)
+    const signature = buildLocalAgentConfigSignature(config, {
+      codexConfigHash: 'codex-config-hash',
+    })
     const expectedHomeDir = join(
       '/tmp/auctor-test-cache',
       'codex',
@@ -51,6 +53,7 @@ describe('createLocalAgentClassifierBackend', () => {
         materializedHomeDir = homeDir
         return join(homeDir, 'skills')
       },
+      getSanitizedCodexConfigHash: () => 'codex-config-hash',
       createLocalExecutor: (input) => {
         executorCodexHomeDir = input.codexHomeDir
         return {
@@ -97,6 +100,17 @@ describe('createLocalAgentClassifierBackend', () => {
         executors: [{ type: 'claude', command: 'claude', model: 'opus' }],
       }),
     )
+
+    expect(second).not.toBe(first)
+  })
+
+  test('changes cache context when sanitized Codex config changes', async () => {
+    const first = buildLocalAgentConfigSignature(localConfig(), {
+      codexConfigHash: 'first-config-hash',
+    })
+    const second = buildLocalAgentConfigSignature(localConfig(), {
+      codexConfigHash: 'second-config-hash',
+    })
 
     expect(second).not.toBe(first)
   })
