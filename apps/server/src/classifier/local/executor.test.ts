@@ -132,6 +132,34 @@ console.log('late output')
       }),
     ).rejects.toThrow(`${script} timed out after 30ms`)
   })
+
+  test('rejects at the timeout deadline when the child ignores SIGTERM', async () => {
+    const dir = makeTempDir()
+    const script = writeExecutable(
+      dir,
+      'ignore-sigterm-process.ts',
+      `
+process.on('SIGTERM', () => {
+  console.error('ignored SIGTERM')
+})
+await new Promise((resolve) => setTimeout(resolve, 1200))
+console.log('late output')
+`,
+    )
+    const startedAt = performance.now()
+
+    await expect(
+      runLocalProcess({
+        command: script,
+        args: [],
+        cwd: dir,
+        prompt: '',
+        timeoutMs: 300,
+      }),
+    ).rejects.toThrow(`${script} timed out after 300ms`)
+
+    expect(performance.now() - startedAt).toBeLessThan(700)
+  })
 })
 
 describe('createLocalExecutor', () => {

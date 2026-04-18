@@ -30,6 +30,7 @@ export interface CreateLocalExecutorInput {
 export async function runLocalProcess(
   input: RunLocalProcessInput,
 ): Promise<RunLocalProcessResult> {
+  const command = formatCommand(input.command, input.args)
   const proc = Bun.spawn([input.command, ...input.args], {
     cwd: input.cwd,
     env: {
@@ -40,34 +41,53 @@ export async function runLocalProcess(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  let timedOut = false
-  const timeout = setTimeout(() => {
-    timedOut = true
-    proc.kill()
-  }, input.timeoutMs)
+  const completion = readProcessCompletion(proc, command)
+  completion.catch(() => {
+    // A timeout rejects without waiting for process streams. Keep observing
+    // late process completion so stream/exited failures do not go unhandled.
+  })
+
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      killProcess(proc)
+      reject(new Error(`${command} timed out after ${input.timeoutMs}ms`))
+    }, input.timeoutMs)
+  })
 
   try {
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-
-    if (timedOut) {
-      throw new Error(
-        `${formatCommand(input.command, input.args)} timed out after ${input.timeoutMs}ms`,
-      )
-    }
-
-    if (exitCode !== 0) {
-      throw new Error(
-        `${formatCommand(input.command, input.args)} failed with code ${exitCode}: ${firstNonEmptyLine(stderr)}`,
-      )
-    }
-
-    return { stdout, stderr }
+    return await Promise.race([completion, deadline])
   } finally {
-    clearTimeout(timeout)
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
+async function readProcessCompletion(
+  proc: Bun.Subprocess<Blob, 'pipe', 'pipe'>,
+  command: string,
+): Promise<RunLocalProcessResult> {
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+
+  if (exitCode !== 0) {
+    throw new Error(
+      `${command} failed with code ${exitCode}: ${firstNonEmptyLine(stderr)}`,
+    )
+  }
+
+  return { stdout, stderr }
+}
+
+function killProcess(proc: Bun.Subprocess<Blob, 'pipe', 'pipe'>): void {
+  try {
+    proc.kill('SIGKILL')
+  } catch {
+    try {
+      proc.kill()
+    } catch {}
   }
 }
 
