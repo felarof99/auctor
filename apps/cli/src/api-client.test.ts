@@ -25,6 +25,6 @@ describe('buildClassifyPayload', () => {
     expect(payload.repo_path).toBe('/Users/me/repo')
     expect('repo_url' in payload).toBe(false)
     expect(payload.work_units).toHaveLength(1)
-    expect(payload.work_units[0].id).toBe('abc')
+    expect(payload.work_units[0]).toEqual(makeUnit())
   })
 })
