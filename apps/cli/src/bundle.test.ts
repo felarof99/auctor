@@ -34,18 +34,14 @@ describe('saveBundle + loadBundle', () => {
   test('roundtrips a bundle through YAML', async () => {
     const dir = mkTmp()
     const path = join(dir, 'browseros.yaml')
-    await saveBundle(path, {
-      ...base,
-      server_url: 'https://server',
-    })
+    await saveBundle(path, base)
     const loaded = await loadBundle(path)
     expect(loaded.name).toBe('browseros')
-    expect(loaded.server_url).toBe('https://server')
     expect(loaded.repos).toEqual([{ name: 'main', path: '/tmp/main' }])
     expect(loaded.engineers).toEqual(['alice'])
   })
 
-  test('ignores legacy convex_url values instead of preserving them', async () => {
+  test('ignores legacy backend URLs instead of preserving them', async () => {
     const dir = mkTmp()
     const path = join(dir, 'browseros.yaml')
     await Bun.write(
@@ -67,7 +63,9 @@ describe('saveBundle + loadBundle', () => {
     await saveBundle(path, loaded)
     const saved = await Bun.file(path).text()
 
+    expect('server_url' in loaded).toBe(false)
     expect('convex_url' in loaded).toBe(false)
+    expect(saved).not.toContain('server_url')
     expect(saved).not.toContain('convex_url')
   })
 

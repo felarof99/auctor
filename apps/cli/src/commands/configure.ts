@@ -12,13 +12,26 @@ import { getUniqueAuthors } from '../git/authors'
 import { parseTimeWindow } from '../git/log'
 import type { BundleConfig } from '../types'
 
+export interface ConfigureOptions {
+  name?: string
+  engineers?: string
+  allEngineers?: boolean
+}
+
 export async function configure(
   configPath: string,
   timeWindow: string,
   repoPaths: string[],
+  options: ConfigureOptions = {},
 ): Promise<void> {
   if (repoPaths.length === 0) {
     console.error('At least one repo path is required.')
+    process.exit(1)
+  }
+
+  const explicitEngineers = parseEngineerList(options.engineers)
+  if (explicitEngineers.length > 0 && options.allEngineers) {
+    console.error('Use either --engineers or --all-engineers, not both.')
     process.exit(1)
   }
 
@@ -34,7 +47,7 @@ export async function configure(
 
   clack.intro('auctor configure')
 
-  let bundle = await getOrInitBundle(absoluteConfigPath)
+  let bundle = await getOrInitBundle(absoluteConfigPath, options)
 
   const since = parseTimeWindow(timeWindow)
 
@@ -49,29 +62,14 @@ export async function configure(
     .map(([username, name]) => ({ username, name }))
     .sort((a, b) => a.username.localeCompare(b.username))
 
-  let selected: string[] = []
-  if (authorInfos.length === 0) {
-    clack.log.warn(
-      `No authors found in ${timeWindow} window across ${absoluteRepoPaths.length} repo(s); skipping engineer prompt.`,
-    )
-  } else {
-    const picked = await clack.multiselect({
-      message: 'Select engineers to track (GitHub usernames):',
-      options: authorInfos.map((a) => ({
-        value: a.username,
-        label: a.username,
-      })),
-      initialValues: authorInfos
-        .map((a) => a.username)
-        .filter((u) => bundle.engineers.includes(u)),
-      required: false,
-    })
-    if (clack.isCancel(picked)) {
-      clack.cancel('Configuration cancelled.')
-      process.exit(0)
-    }
-    selected = picked as string[]
-  }
+  const selected = await selectEngineers({
+    authorInfos,
+    bundle,
+    explicitEngineers,
+    allEngineers: options.allEngineers === true,
+    timeWindow,
+    repoCount: absoluteRepoPaths.length,
+  })
 
   for (const repoPath of absoluteRepoPaths) {
     const repoEntry = findRepoByPath(bundle, repoPath) ?? {
@@ -89,12 +87,86 @@ export async function configure(
   )
 }
 
-async function getOrInitBundle(configPath: string): Promise<BundleConfig> {
+function parseEngineerList(engineers?: string): string[] {
+  return (
+    engineers
+      ?.split(',')
+      .map((u) => u.trim())
+      .filter(Boolean) ?? []
+  )
+}
+
+async function selectEngineers(opts: {
+  authorInfos: Array<{ username: string; name: string }>
+  bundle: BundleConfig
+  explicitEngineers: string[]
+  allEngineers: boolean
+  timeWindow: string
+  repoCount: number
+}): Promise<string[]> {
+  if (opts.explicitEngineers.length > 0) return opts.explicitEngineers
+  if (opts.authorInfos.length === 0) {
+    clack.log.warn(
+      `No authors found in ${opts.timeWindow} window across ${opts.repoCount} repo(s); skipping engineer prompt.`,
+    )
+    return []
+  }
+  if (opts.allEngineers) return opts.authorInfos.map((a) => a.username)
+  const picked = await clack.multiselect({
+    message: 'Select engineers to track (GitHub usernames):',
+    options: opts.authorInfos.map((a) => ({
+      value: a.username,
+      label: a.username,
+    })),
+    initialValues: opts.authorInfos
+      .map((a) => a.username)
+      .filter((u) => opts.bundle.engineers.includes(u)),
+    required: false,
+  })
+  if (clack.isCancel(picked)) {
+    clack.cancel('Configuration cancelled.')
+    process.exit(0)
+  }
+  return picked as string[]
+}
+
+async function getOrInitBundle(
+  configPath: string,
+  options: ConfigureOptions,
+): Promise<BundleConfig> {
   if (existsSync(configPath)) {
     return loadBundle(configPath)
   }
   clack.log.info(`Creating new bundle at ${configPath}`)
   const defaultName = basename(configPath).replace(/(_config)?\.ya?ml$/, '')
+  if (shouldPromptForNewBundle(options)) {
+    return promptForNewBundle(configPath, defaultName)
+  }
+  const name = (options.name ?? defaultName).trim()
+  if (!name) {
+    console.error('Bundle name cannot be empty.')
+    process.exit(1)
+  }
+  mkdirSync(dirname(configPath), { recursive: true })
+  return {
+    name,
+    repos: [],
+    engineers: [],
+  }
+}
+
+function shouldPromptForNewBundle(options: ConfigureOptions): boolean {
+  return (
+    options.name === undefined &&
+    parseEngineerList(options.engineers).length === 0 &&
+    options.allEngineers !== true
+  )
+}
+
+async function promptForNewBundle(
+  configPath: string,
+  defaultName: string,
+): Promise<BundleConfig> {
   const nameRes = await clack.text({
     message: 'Bundle name:',
     initialValue: defaultName,
@@ -104,21 +176,10 @@ async function getOrInitBundle(configPath: string): Promise<BundleConfig> {
     clack.cancel('Configuration cancelled.')
     process.exit(0)
   }
-  const serverRes = await clack.text({
-    message: 'Server URL (blank to skip):',
-    placeholder: 'https://auctor-server.fly.dev',
-    defaultValue: '',
-  })
-  if (clack.isCancel(serverRes)) {
-    clack.cancel('Configuration cancelled.')
-    process.exit(0)
-  }
   mkdirSync(dirname(configPath), { recursive: true })
   const name = (nameRes as string).trim()
-  const serverUrl = (serverRes as string).trim()
   return {
     name,
-    ...(serverUrl ? { server_url: serverUrl } : {}),
     repos: [],
     engineers: [],
   }

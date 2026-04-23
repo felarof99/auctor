@@ -12,9 +12,15 @@ import {
   renderMicroscope,
 } from '../microscope-output'
 
+export interface MicroscopeOptions {
+  engineer?: string
+  jsonPath?: string
+}
+
 export async function microscope(
   configPath: string,
   timeWindow: string,
+  options: MicroscopeOptions = {},
 ): Promise<void> {
   const absoluteConfigPath = resolve(configPath)
   const bundle = await loadBundle(absoluteConfigPath)
@@ -25,7 +31,7 @@ export async function microscope(
   }
 
   clack.intro('auctor microscope')
-  const username = await pickEngineer(bundle.engineers)
+  const username = await resolveEngineer(bundle.engineers, options.engineer)
   if (!username) {
     clack.cancel('No engineer selected.')
     process.exit(0)
@@ -66,17 +72,11 @@ export async function microscope(
   )
   console.log(`\n${output}`)
 
-  const resultsDir = join(dirname(absoluteConfigPath), '.results')
-  mkdirSync(resultsDir, { recursive: true })
-  const stamp = new Date()
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\..*/, '')
-    .replace('T', '-')
-  const reportPath = join(
-    resultsDir,
-    `${bundle.name}-microscope-${username}-${stamp}.json`,
-  )
+  const reportPath =
+    options.jsonPath !== undefined
+      ? resolve(options.jsonPath)
+      : getDefaultReportPath(absoluteConfigPath, bundle.name, username)
+  mkdirSync(dirname(reportPath), { recursive: true })
   const report = buildMicroscopeReport({
     username,
     bundleName: bundle.name,
@@ -85,6 +85,38 @@ export async function microscope(
   })
   await Bun.write(reportPath, JSON.stringify(report, null, 2))
   console.log(`\nReport written to ${reportPath}`)
+}
+
+async function resolveEngineer(
+  engineers: string[],
+  requested?: string,
+): Promise<string | null> {
+  if (requested === undefined) return pickEngineer(engineers)
+  const username = requested.trim()
+  if (!username) {
+    console.error('Engineer username cannot be empty.')
+    process.exit(1)
+  }
+  if (!engineers.includes(username)) {
+    console.error(`Engineer not found in bundle: ${username}`)
+    console.error(`Available engineers: ${engineers.join(', ')}`)
+    process.exit(1)
+  }
+  return username
+}
+
+function getDefaultReportPath(
+  configPath: string,
+  bundleName: string,
+  username: string,
+): string {
+  const resultsDir = join(dirname(configPath), '.results')
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\..*/, '')
+    .replace('T', '-')
+  return join(resultsDir, `${bundleName}-microscope-${username}-${stamp}.json`)
 }
 
 async function pickEngineer(engineers: string[]): Promise<string | null> {
