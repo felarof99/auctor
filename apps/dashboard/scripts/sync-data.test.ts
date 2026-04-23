@@ -22,7 +22,7 @@ describe('syncDashboardData', () => {
   })
 
   function makeResultFile(bundle: string, repo: string, data?: unknown): void {
-    const resultsDir = join(rootDir, 'configs', bundle, '.results')
+    const resultsDir = join(rootDir, 'out', bundle, '.results')
     mkdirSync(resultsDir, { recursive: true })
     writeJson(join(resultsDir, `${repo}.json`), data ?? { bundle, repo })
   }
@@ -69,7 +69,7 @@ describe('syncDashboardData', () => {
   it('skips microscope files', async () => {
     makeResultFile('browseros', 'browseros-main')
     // microscope file — should be skipped
-    const resultsDir = join(rootDir, 'configs', 'browseros', '.results')
+    const resultsDir = join(rootDir, 'out', 'browseros', '.results')
     writeJson(
       join(resultsDir, 'browseros-microscope-alice-20260417-1030.json'),
       { type: 'microscope' },
@@ -112,7 +112,7 @@ describe('syncDashboardData', () => {
     expect(manifest.bundles).toHaveLength(1)
   })
 
-  it('handles empty source (no configs) gracefully', async () => {
+  it('handles empty source (no out results) gracefully', async () => {
     await syncDashboardData({ rootDir, outDir })
 
     const manifest = JSON.parse(

@@ -20,7 +20,7 @@ export async function syncDashboardData(opts: SyncOptions): Promise<void> {
 
   mkdirSync(outDir, { recursive: true })
 
-  const glob = new Bun.Glob('configs/*/.results/*.json')
+  const glob = new Bun.Glob('out/*/.results/*.json')
   const matches = await Array.fromAsync(
     glob.scan({ cwd: rootDir, absolute: false, dot: true }),
   )
