@@ -94,9 +94,9 @@ function ProvenanceSection<
         </div>
       ) : (
         <div className="overflow-hidden rounded-md border border-border">
-          {items.map((item, index) => (
+          {items.map((item) => (
             <div
-              key={`${item.repo}-${renderIdentifier(item)}-${index}`}
+              key={`${item.repo}-${item.branch ?? ''}-${renderIdentifier(item)}-${item.message}`}
               className="grid grid-cols-[minmax(5rem,8rem)_minmax(5rem,8rem)_minmax(4.5rem,6rem)_1fr] gap-3 border-border border-b px-3 py-2 text-sm last:border-b-0"
             >
               <div className="truncate text-muted-foreground">{item.repo}</div>
