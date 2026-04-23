@@ -105,13 +105,13 @@ async function selectEngineers(opts: {
   repoCount: number
 }): Promise<string[]> {
   if (opts.explicitEngineers.length > 0) return opts.explicitEngineers
-  if (opts.allEngineers) return opts.authorInfos.map((a) => a.username)
   if (opts.authorInfos.length === 0) {
     clack.log.warn(
       `No authors found in ${opts.timeWindow} window across ${opts.repoCount} repo(s); skipping engineer prompt.`,
     )
     return []
   }
+  if (opts.allEngineers) return opts.authorInfos.map((a) => a.username)
   const picked = await clack.multiselect({
     message: 'Select engineers to track (GitHub usernames):',
     options: opts.authorInfos.map((a) => ({
