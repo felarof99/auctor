@@ -18,9 +18,24 @@ program
   .argument('<config>', 'Path to bundle YAML file')
   .argument('<time-window>', 'Time window for author scan (e.g., -7d, -30d)')
   .argument('<repos...>', 'One or more paths to git repositories to add')
+  .option('--name <name>', 'Bundle name to use when creating a new config')
+  .option(
+    '--engineers <usernames>',
+    'Comma-separated GitHub usernames to track without prompting',
+  )
+  .option('--all-engineers', 'Track all discovered authors without prompting')
   .action(
-    async (configPath: string, timeWindow: string, repoPaths: string[]) => {
-      await configure(configPath, timeWindow, repoPaths)
+    async (
+      configPath: string,
+      timeWindow: string,
+      repoPaths: string[],
+      opts: {
+        name?: string
+        engineers?: string
+        allEngineers?: boolean
+      },
+    ) => {
+      await configure(configPath, timeWindow, repoPaths, opts)
     },
   )
 
@@ -53,8 +68,19 @@ program
   .description('Zoom into one engineer across a bundle, grouped by day')
   .argument('<config>', 'Path to bundle YAML file')
   .argument('<time-window>', 'Time window (e.g., -7d, -30d)')
-  .action(async (configPath: string, timeWindow: string) => {
-    await microscope(configPath, timeWindow)
-  })
+  .option('--engineer <username>', 'GitHub username to inspect')
+  .option('--json <file>', 'Write microscope report JSON to file')
+  .action(
+    async (
+      configPath: string,
+      timeWindow: string,
+      opts: { engineer?: string; json?: string },
+    ) => {
+      await microscope(configPath, timeWindow, {
+        engineer: opts.engineer,
+        jsonPath: opts.json,
+      })
+    },
+  )
 
 program.parse()
