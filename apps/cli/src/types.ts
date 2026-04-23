@@ -37,7 +37,6 @@ export interface BundleRepo {
 
 export interface BundleConfig {
   name: string
-  server_url?: string
   repos: BundleRepo[]
   engineers: string[]
 }

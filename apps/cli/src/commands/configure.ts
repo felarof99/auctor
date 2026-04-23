@@ -104,21 +104,10 @@ async function getOrInitBundle(configPath: string): Promise<BundleConfig> {
     clack.cancel('Configuration cancelled.')
     process.exit(0)
   }
-  const serverRes = await clack.text({
-    message: 'Server URL (blank to skip):',
-    placeholder: 'https://auctor-server.fly.dev',
-    defaultValue: '',
-  })
-  if (clack.isCancel(serverRes)) {
-    clack.cancel('Configuration cancelled.')
-    process.exit(0)
-  }
   mkdirSync(dirname(configPath), { recursive: true })
   const name = (nameRes as string).trim()
-  const serverUrl = (serverRes as string).trim()
   return {
     name,
-    ...(serverUrl ? { server_url: serverUrl } : {}),
     repos: [],
     engineers: [],
   }

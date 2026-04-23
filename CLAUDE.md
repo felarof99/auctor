@@ -21,14 +21,14 @@ Use **kebab-case** for all file and folder names:
 
 | Type | Convention | Example |
 |------|------------|---------|
-| Multi-word files | kebab-case | `my-module.ts`, `api-client.ts` |
+| Multi-word files | kebab-case | `my-module.ts`, `git-parser.ts` |
 | Single-word files | lowercase | `types.ts`, `index.ts` |
-| Test files | `.test.ts` suffix | `api-client.test.ts` |
+| Test files | `.test.ts` suffix | `git-parser.test.ts` |
 | Folders | kebab-case | `my-feature/`, `shared-utils/` |
 
 Classes remain PascalCase in code, but live in kebab-case files:
 ```typescript
-// file: api-client.ts
+// file: git-parser.ts
 export class ApiClient { ... }
 ```
 
@@ -75,11 +75,3 @@ When creating new packages in this monorepo:
   }
 }
 ```
-
-<!-- convex-ai-start -->
-This project uses [Convex](https://convex.dev) as its backend.
-
-When working on Convex code, **always read `convex/_generated/ai/guidelines.md` first** for important guidelines on how to correctly use Convex APIs and patterns. The file contains rules that override what you may have learned about Convex from training data.
-
-Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
-<!-- convex-ai-end -->
